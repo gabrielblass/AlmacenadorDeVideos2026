@@ -6,6 +6,7 @@ from pyrogram.enums import MessagesFilter
 from pyrogram.types import InputMediaPhoto, InputMediaVideo
 from pyrogram.errors import FloodWait
 from dotenv import load_dotenv
+from aiohttp import web # ÚNICA LIBRERÍA AGREGADA
 
 # ==========================================
 # 1. CONFIGURACIÓN INICIAL
@@ -281,10 +282,25 @@ async def aspiradora_historica():
     print("🏁 [MOTOR HISTÓRICO] Revisión antigua finalizada. El Radar asume el control total 24/7.")
 
 # ==========================================
+# MÓDULO WEB MÍNIMO (Para que Render no apague)
+# ==========================================
+async def handle(request):
+    return web.Response(text="Bot vivo")
+
+async def iniciar_web():
+    app_web = web.Application()
+    app_web.router.add_get('/', handle)
+    runner = web.AppRunner(app_web)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', int(os.environ.get("PORT", 8080)))
+    await site.start()
+
+# ==========================================
 # 7. ARRANQUE DEL SISTEMA
 # ==========================================
 async def main():
     await iniciar_db()
+    await iniciar_web() # Lanzamos el servidor web silencioso
     print("🚀 Encendiendo el Sistema Dual Obrero...")
     await app.start()
     
