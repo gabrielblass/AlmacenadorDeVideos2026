@@ -1,4 +1,7 @@
 import asyncio
+import nest_asyncio
+nest_asyncio.apply()
+
 import os
 import aiosqlite
 from pyrogram import Client, filters
@@ -6,7 +9,7 @@ from pyrogram.enums import MessagesFilter
 from pyrogram.types import InputMediaPhoto, InputMediaVideo
 from pyrogram.errors import FloodWait
 from dotenv import load_dotenv
-from aiohttp import web # ÚNICA LIBRERÍA AGREGADA
+from aiohttp import web
 
 # ==========================================
 # 1. CONFIGURACIÓN INICIAL
@@ -300,7 +303,7 @@ async def iniciar_web():
 # ==========================================
 async def main():
     await iniciar_db()
-    await iniciar_web() # Lanzamos el servidor web silencioso
+    await iniciar_web() 
     print("🚀 Encendiendo el Sistema Dual Obrero...")
     await app.start()
     
