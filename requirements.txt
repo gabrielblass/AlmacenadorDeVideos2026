@@ -3,3 +3,4 @@ tgcrypto==1.2.5
 aiosqlite==0.20.0
 python-dotenv==1.0.1
 aiohttp
+nest_asyncio
