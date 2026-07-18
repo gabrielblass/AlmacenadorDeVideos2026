@@ -35,7 +35,6 @@ DB_NAME = "memoria_sistema.db"
 # ANCLA DE MIGRACIÓN:
 FORZAR_IDS = {-1002632813544: 3454} 
 
-# 🔥 UMBRAL A 60s PARA QUE MANEJE PAUSAS AUTOMÁTICAMENTE 🔥
 app = Client(
     "mi_radar_2026",
     api_id=API_ID,
@@ -48,7 +47,7 @@ CHATS_MONITOREADOS = set()
 GRUPOS_EN_HISTORICO = set()
 
 # ==========================================
-# 2. BASE DE DATOS Y RESPALDOS
+# 2. BASE DE DATOS Y RESPALDOS (NUBE TELEGRAM)
 # ==========================================
 async def iniciar_db():
     async with aiosqlite.connect(DB_NAME) as db:
@@ -59,14 +58,35 @@ async def iniciar_db():
         await db.commit()
 
 async def enviar_respaldo():
+    if not BACKUP_CHAT_ID:
+        return
     try:
         await app.send_document(
             chat_id=BACKUP_CHAT_ID,
             document=DB_NAME,
             caption="🛡️ Respaldo Automático de la Memoria (SQLite)"
         )
-    except Exception:
-        pass
+        print("☁️ [BACKUP] Memoria guardada en Telegram con éxito.")
+    except Exception as e:
+        print(f"⚠️ Error al guardar respaldo: {e}")
+
+async def descargar_respaldo():
+    if not BACKUP_CHAT_ID:
+        print("⚠️ No hay BACKUP_CHAT_ID configurado. Saltando restauración.")
+        return
+    
+    print("🔄 Buscando respaldo de memoria en la nube de Telegram...")
+    try:
+        # Buscamos en los últimos 20 mensajes del canal de respaldo
+        async for mensaje in app.get_chat_history(BACKUP_CHAT_ID, limit=20):
+            if mensaje.document and mensaje.document.file_name == DB_NAME:
+                print("📥 Respaldo encontrado. Descargando e inyectando memoria...")
+                await app.download_media(mensaje.document, file_name=DB_NAME)
+                print("✅ Memoria restaurada con éxito. ¡Amnesia curada!")
+                return
+        print("⚠️ No se encontró ningún respaldo anterior. Iniciando memoria desde cero.")
+    except Exception as e:
+        print(f"❌ Error al intentar descargar el respaldo: {e}")
 
 async def obtener_progreso(chat_id):
     async with aiosqlite.connect(DB_NAME) as db:
@@ -103,7 +123,7 @@ async def registrar_huella(huella):
         await db.commit()
 
 # ==========================================
-# 4. EL MOTOR DE REENVÍO (Con reporte de errores claro)
+# 4. EL MOTOR DE REENVÍO
 # ==========================================
 async def procesar_y_enviar(mensaje):
     huella = generar_huella(mensaje)
@@ -266,17 +286,18 @@ async def aspiradora_historica():
             for mensaje in mensajes_pendientes:
                 fue_enviado = await procesar_y_enviar(mensaje)
                 
-                # 🔥 AHORA SÓLO GUARDA PROGRESO SI EL ENVÍO FUE EXITOSO O ERA DUPLICADO 🔥
                 if fue_enviado or await es_duplicado(generar_huella(mensaje)):
                     await guardar_progreso(chat.id, mensaje.id)
                 
                 if fue_enviado:
                     contador_rafaga += 1
                     if contador_rafaga >= 50:
-                        # 🔥 DESCANSO ACTUALIZADO A 120 SEG (2 MINUTOS) 🔥
                         print("⏸️ [DESCANSO] Ráfaga de 50 completada. Respirando 120s (2 minutos) para proteger la cuenta...")
                         await asyncio.sleep(120)
+                        
+                        # 🔥 AQUÍ SE DISPARA EL RESPALDO AUTOMÁTICO A TELEGRAM 🔥
                         asyncio.create_task(enviar_respaldo())
+                        
                         contador_rafaga = 0
                         print("▶️ [REANUDANDO] Conexión renovada...")
             
@@ -290,6 +311,8 @@ async def aspiradora_historica():
                 GRUPOS_EN_HISTORICO.discard(enlace)
             continue
 
+    # Respaldo final al terminar toda la revisión histórica
+    await enviar_respaldo()
     print("🏁 [MOTOR HISTÓRICO] Revisión antigua finalizada. El Radar asume el control total 24/7.")
 
 # ==========================================
@@ -322,11 +345,14 @@ async def main():
     await iniciar_db()
     await iniciar_web() 
     print("🚀 Encendiendo el Sistema Dual Obrero...")
+    
     await app.start()
+    
+    # 🔥 AHORA SÍ: EL BOT RECUPERA SU CEREBRO DE LA NUBE APENAS DESPIERTA 🔥
+    await descargar_respaldo()
     
     print(f"✅ Destino configurado en el `.env`: {TARGET_CHAT_ID}")
     
-    # 🔥 CURA PARA LA AMNESIA DE CACHÉ DE PYROGRAM 🔥
     print("🔄 Sincronizando chats con Telegram para evitar errores de ID...")
     try:
         async for dialog in app.get_dialogs(limit=200):
