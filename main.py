@@ -4,12 +4,16 @@ nest_asyncio.apply()
 
 import os
 import aiosqlite
+import logging
 from pyrogram import Client, filters
 from pyrogram.enums import MessagesFilter
 from pyrogram.types import InputMediaPhoto, InputMediaVideo
 from pyrogram.errors import FloodWait
 from dotenv import load_dotenv
 from aiohttp import web
+
+# Ocultar advertencias molestas internas de Pyrogram
+logging.getLogger("pyrogram").setLevel(logging.ERROR)
 
 # ==========================================
 # 1. CONFIGURACIÓN INICIAL
@@ -26,20 +30,17 @@ else:
 
 BACKUP_CHAT_ID = int(os.environ.get("BACKUP_CHAT_ID", 0))
 
-SESSION_STRING = "AQJCFbQAD1sY-yOTliNYkeknOmhL1lR44a5Ox2rRch9gPeJ_KFxb1dnm6zoK1MnQW3uhYYDxdT0D3NWkxhLrJQKFwrGeJlfHblgMN92GGkC8OJKNuxb4yQIqrahxYLUagQg1rZvMWq8xRVTAZ1BurPnYuw3diNKicy9Y9QG96Ozw4zZeXsEymM1ctewXZEm4utlBweVZSAC7JOBxYezJ4817HWsL6QJ4WXcyKTFAQd-wXBybhf7mqKgW8BUvh-icGxOuKKOeivG9oo-lJsR_S1LUyF1zakNW-CQkc6euF_Vw90HYXuWE4PBl3S1xopXVF_PwA2GyBAyyDKHzEW4MVN7bl3cNzAAAAABKHUk3AA"
-
 DB_NAME = "memoria_sistema.db"
 
 # ANCLA DE MIGRACIÓN:
 FORZAR_IDS = {-1002632813544: 3454} 
 
-# 🔥 APAGAMOS EL PILOTO AUTOMÁTICO DE PYROGRAM 🔥
+# 🔥 UMBRAL A 60s PARA QUE MANEJE PAUSAS AUTOMÁTICAMENTE 🔥
 app = Client(
-    "obrero_maestro",
+    "mi_radar_2026",
     api_id=API_ID,
     api_hash=API_HASH,
-    session_string=SESSION_STRING,
-    sleep_threshold=0 
+    sleep_threshold=60 
 )
 
 albumes_procesados = set()
@@ -102,7 +103,7 @@ async def registrar_huella(huella):
         await db.commit()
 
 # ==========================================
-# 4. EL MOTOR DE REENVÍO
+# 4. EL MOTOR DE REENVÍO (Con reporte de errores claro)
 # ==========================================
 async def procesar_y_enviar(mensaje):
     huella = generar_huella(mensaje)
@@ -118,43 +119,47 @@ async def procesar_y_enviar(mensaje):
         if mensaje.media_group_id in albumes_procesados:
             return False
         albumes_procesados.add(mensaje.media_group_id)
-        try:
-            grupo_completo = await app.get_media_group(mensaje.chat.id, mensaje.id)
-            media_limpia = []
-            huellas_grupo = []
-            for msg in grupo_completo:
-                h = generar_huella(msg)
-                if h: huellas_grupo.append(h)
-                if msg.photo:
-                    media_limpia.append(InputMediaPhoto(msg.photo.file_id, caption=""))
-                elif msg.video:
-                    media_limpia.append(InputMediaVideo(msg.video.file_id, caption=""))
-            
-            if media_limpia:
-                await app.send_media_group(TARGET_CHAT_ID, media=media_limpia)
-                for h in huellas_grupo: await registrar_huella(h)
-                print(f"📦 [ENVIADO] ÁLBUM copiado (Último ID: {mensaje.id}).")
-                await asyncio.sleep(4) 
-                return True
-        except FloodWait as e:
-            print(f"🚨 [ALERTA] Telegram pide descansar {e.value}s (Álbum ID: {mensaje.id})")
-            await asyncio.sleep(e.value)
-            return False
-        except Exception:
-            return False
+        
+        while True:
+            try:
+                grupo_completo = await app.get_media_group(mensaje.chat.id, mensaje.id)
+                media_limpia = []
+                huellas_grupo = []
+                for msg in grupo_completo:
+                    h = generar_huella(msg)
+                    if h: huellas_grupo.append(h)
+                    if msg.photo:
+                        media_limpia.append(InputMediaPhoto(msg.photo.file_id, caption=""))
+                    elif msg.video:
+                        media_limpia.append(InputMediaVideo(msg.video.file_id, caption=""))
+                
+                if media_limpia:
+                    await app.send_media_group(TARGET_CHAT_ID, media=media_limpia)
+                    for h in huellas_grupo: await registrar_huella(h)
+                    print(f"📦 [ENVIADO] ÁLBUM copiado (Último ID: {mensaje.id}).")
+                    await asyncio.sleep(4) 
+                    return True
+                return False
+            except FloodWait as e:
+                print(f"🚨 [ALERTA] Telegram pide descansar {e.value}s (Álbum ID: {mensaje.id}). Reintentando...")
+                await asyncio.sleep(e.value + 1)
+            except Exception as e:
+                print(f"❌ [ERROR FATAL ÁLBUM] No se pudo enviar el ID {mensaje.id}. Causa: {e}")
+                return False
 
-    try:
-        await mensaje.copy(chat_id=TARGET_CHAT_ID, caption="")
-        await registrar_huella(huella)
-        print(f"🚀 [ENVIADO] INDIVIDUAL copiado | ID: {mensaje.id}")
-        await asyncio.sleep(2) 
-        return True
-    except FloodWait as e:
-        print(f"🚨 [ALERTA] Telegram pide descansar {e.value}s (Individual ID: {mensaje.id})")
-        await asyncio.sleep(e.value)
-        return False
-    except Exception:
-        return False
+    while True:
+        try:
+            await mensaje.copy(chat_id=TARGET_CHAT_ID, caption="")
+            await registrar_huella(huella)
+            print(f"🚀 [ENVIADO] INDIVIDUAL copiado | ID: {mensaje.id}")
+            await asyncio.sleep(2) 
+            return True
+        except FloodWait as e:
+            print(f"🚨 [ALERTA] Telegram pide descansar {e.value}s (Individual ID: {mensaje.id}). Reintentando...")
+            await asyncio.sleep(e.value + 1)
+        except Exception as e:
+            print(f"❌ [ERROR FATAL INDIVIDUAL] No se pudo enviar el ID {mensaje.id}. Causa: {e}")
+            return False
 
 # ==========================================
 # 5. EL RADAR EN VIVO 
@@ -224,7 +229,7 @@ async def aspiradora_historica():
                         bloque.append(m)
                 except FloodWait as e:
                     print(f"🚨 [ALERTA DE LECTURA] Telegram pide pausa de {e.value}s...")
-                    await asyncio.sleep(e.value)
+                    await asyncio.sleep(e.value + 1)
                     continue
 
                 if not bloque:
@@ -251,7 +256,6 @@ async def aspiradora_historica():
                 
             print(f"📥 Se encontraron {len(mensajes_pendientes)} archivos nuevos.")
             
-            # 🔥 ENFRIADOR AUTOMÁTICO 🔥
             if len(mensajes_pendientes) > 500:
                 print("⏳ [ENFRIAMIENTO] Se leyó un historial masivo. Pausando 15 segundos...")
                 await asyncio.sleep(15)
@@ -261,13 +265,17 @@ async def aspiradora_historica():
             contador_rafaga = 0
             for mensaje in mensajes_pendientes:
                 fue_enviado = await procesar_y_enviar(mensaje)
-                await guardar_progreso(chat.id, mensaje.id)
+                
+                # 🔥 AHORA SÓLO GUARDA PROGRESO SI EL ENVÍO FUE EXITOSO O ERA DUPLICADO 🔥
+                if fue_enviado or await es_duplicado(generar_huella(mensaje)):
+                    await guardar_progreso(chat.id, mensaje.id)
                 
                 if fue_enviado:
                     contador_rafaga += 1
                     if contador_rafaga >= 50:
-                        print("⏸️ [DESCANSO] Ráfaga de 50 completada. Respirando 60s...")
-                        await asyncio.sleep(60)
+                        # 🔥 DESCANSO ACTUALIZADO A 120 SEG (2 MINUTOS) 🔥
+                        print("⏸️ [DESCANSO] Ráfaga de 50 completada. Respirando 120s (2 minutos) para proteger la cuenta...")
+                        await asyncio.sleep(120)
                         asyncio.create_task(enviar_respaldo())
                         contador_rafaga = 0
                         print("▶️ [REANUDANDO] Conexión renovada...")
@@ -302,12 +310,36 @@ async def iniciar_web():
 # 7. ARRANQUE DEL SISTEMA
 # ==========================================
 async def main():
+    # 🔥 Silenciador de consola para errores fantasmas 🔥
+    loop = asyncio.get_event_loop()
+    def silenciar_errores_molestos(loop, context):
+        msg = context.get("exception", context.get("message", ""))
+        if "Peer id invalid" in str(msg):
+            return 
+        loop.default_exception_handler(context)
+    loop.set_exception_handler(silenciar_errores_molestos)
+
     await iniciar_db()
     await iniciar_web() 
     print("🚀 Encendiendo el Sistema Dual Obrero...")
     await app.start()
     
-    print(f"✅ Destino configurado correctamente en el ID: {TARGET_CHAT_ID}")
+    print(f"✅ Destino configurado en el `.env`: {TARGET_CHAT_ID}")
+    
+    # 🔥 CURA PARA LA AMNESIA DE CACHÉ DE PYROGRAM 🔥
+    print("🔄 Sincronizando chats con Telegram para evitar errores de ID...")
+    try:
+        async for dialog in app.get_dialogs(limit=200):
+            if dialog.chat.id == TARGET_CHAT_ID:
+                break
+    except Exception:
+        pass
+    
+    try:
+        chat_destino = await app.get_chat(TARGET_CHAT_ID)
+        print(f"✅ ¡AHORA SÍ! Conectado exitosamente al grupo de destino: {chat_destino.title}")
+    except Exception as e:
+        print(f"❌ ¡CUIDADO! Sigue sin reconocer el ID. Error: {e}")
     
     asyncio.create_task(aspiradora_historica())
     
