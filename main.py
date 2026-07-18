@@ -3,6 +3,7 @@ import nest_asyncio
 nest_asyncio.apply()
 
 import os
+import sys
 import aiosqlite
 import logging
 from pyrogram import Client, filters
@@ -16,25 +17,33 @@ from aiohttp import web
 logging.getLogger("pyrogram").setLevel(logging.ERROR)
 
 # ==========================================
-# 1. CONFIGURACIÓN INICIAL
+# 1. CONFIGURACIÓN INICIAL & PREVENCIÓN DE ERRORES
 # ==========================================
 load_dotenv()
-API_ID = int(os.environ.get("API_ID", 0))
-API_HASH = os.environ.get("API_HASH", "")
 
-RAW_TARGET = os.environ.get("TARGET_CHAT_ID", "").strip().replace('"', '').replace("'", "")
-if RAW_TARGET.lstrip('-').isdigit():
-    TARGET_CHAT_ID = int(RAW_TARGET)
-else:
-    TARGET_CHAT_ID = RAW_TARGET
-
-BACKUP_CHAT_ID = int(os.environ.get("BACKUP_CHAT_ID", 0))
+# VALIDACIÓN ESTRICTA: Si falta un dato clave, el bot avisa y se detiene en seco.
+try:
+    API_ID = int(os.environ.get("API_ID", 0))
+    API_HASH = os.environ.get("API_HASH", "").strip()
+    RAW_TARGET = os.environ.get("TARGET_CHAT_ID", "").strip().replace('"', '').replace("'", "")
+    RAW_BACKUP = os.environ.get("BACKUP_CHAT_ID", "").strip().replace('"', '').replace("'", "")
+    
+    if not API_ID or not API_HASH:
+        raise ValueError("Faltan API_ID o API_HASH.")
+    if not RAW_TARGET:
+        raise ValueError("Falta TARGET_CHAT_ID.")
+    if not RAW_BACKUP:
+        raise ValueError("Falta BACKUP_CHAT_ID. Sin esto el bot perderá la memoria en Render.")
+        
+    TARGET_CHAT_ID = int(RAW_TARGET) if RAW_TARGET.lstrip('-').isdigit() else RAW_TARGET
+    BACKUP_CHAT_ID = int(RAW_BACKUP) if RAW_BACKUP.lstrip('-').isdigit() else RAW_BACKUP
+except Exception as e:
+    print(f"❌ [ERROR FATAL DE CONFIGURACIÓN] Revisa tu panel de Render o .env: {e}")
+    sys.exit(1)
 
 DB_NAME = "memoria_sistema.db"
 
-# ANCLA DE MIGRACIÓN:
-FORZAR_IDS = {-1002632813544: 3454} 
-
+# 🔥 UMBRAL A 60s PARA QUE MANEJE PAUSAS AUTOMÁTICAMENTE 🔥
 app = Client(
     "mi_radar_2026",
     api_id=API_ID,
@@ -50,6 +59,7 @@ GRUPOS_EN_HISTORICO = set()
 # 2. BASE DE DATOS Y RESPALDOS (NUBE TELEGRAM)
 # ==========================================
 async def iniciar_db():
+    """Asegura que las tablas existan siempre, incluso si es nueva."""
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute('''CREATE TABLE IF NOT EXISTS archivos_enviados 
                             (huella TEXT PRIMARY KEY)''')
@@ -58,23 +68,21 @@ async def iniciar_db():
         await db.commit()
 
 async def enviar_respaldo():
+    """Sube la base de datos al canal secreto."""
     if not BACKUP_CHAT_ID:
         return
     try:
         await app.send_document(
             chat_id=BACKUP_CHAT_ID,
             document=DB_NAME,
-            caption="🛡️ Respaldo Automático de la Memoria (SQLite)"
+            caption="🛡️ Respaldo Automático de la Memoria (SQLite) - Bot Sincronizado"
         )
         print("☁️ [BACKUP] Memoria guardada en Telegram con éxito.")
     except Exception as e:
-        print(f"⚠️ Error al guardar respaldo: {e}")
+        print(f"⚠️ [ALERTA] Error al guardar respaldo en el canal: {e}")
 
 async def descargar_respaldo():
-    if not BACKUP_CHAT_ID:
-        print("⚠️ No hay BACKUP_CHAT_ID configurado. Saltando restauración.")
-        return
-    
+    """Descarga el cerebro del bot ANTES de hacer nada."""
     print("🔄 Buscando respaldo de memoria en la nube de Telegram...")
     try:
         # Buscamos en los últimos 20 mensajes del canal de respaldo
@@ -82,11 +90,11 @@ async def descargar_respaldo():
             if mensaje.document and mensaje.document.file_name == DB_NAME:
                 print("📥 Respaldo encontrado. Descargando e inyectando memoria...")
                 await app.download_media(mensaje.document, file_name=DB_NAME)
-                print("✅ Memoria restaurada con éxito. ¡Amnesia curada!")
+                print("✅ Memoria restaurada con éxito. ¡Listo para continuar desde donde se quedó!")
                 return
-        print("⚠️ No se encontró ningún respaldo anterior. Iniciando memoria desde cero.")
+        print("⚠️ No se encontró respaldo anterior (O el canal está vacío). Iniciando memoria limpia desde cero.")
     except Exception as e:
-        print(f"❌ Error al intentar descargar el respaldo: {e}")
+        print(f"❌ [CRÍTICO] Error al intentar descargar el respaldo. Arrancará en limpio: {e}")
 
 async def obtener_progreso(chat_id):
     async with aiosqlite.connect(DB_NAME) as db:
@@ -103,6 +111,7 @@ async def guardar_progreso(chat_id, mensaje_id):
 # 3. EL FILTRO DE HUELLA DIGITAL
 # ==========================================
 def generar_huella(mensaje):
+    """Genera un código único basado en el peso y dimensiones del archivo."""
     media = mensaje.photo or mensaje.video
     if not media: return None
     file_size = getattr(media, "file_size", 0)
@@ -132,7 +141,7 @@ async def procesar_y_enviar(mensaje):
     if await es_duplicado(huella):
         if getattr(mensaje, "media_group_id", None):
             albumes_procesados.add(mensaje.media_group_id) 
-        print(f"⚠️ [FILTRO] Duplicado local ignorado (ID: {mensaje.id}).")
+        print(f"⚠️ [FILTRO] Duplicado ignorado (ID: {mensaje.id}).")
         return False
 
     if getattr(mensaje, "media_group_id", None):
@@ -161,7 +170,7 @@ async def procesar_y_enviar(mensaje):
                     return True
                 return False
             except FloodWait as e:
-                print(f"🚨 [ALERTA] Telegram pide descansar {e.value}s (Álbum ID: {mensaje.id}). Reintentando...")
+                print(f"🚨 Telegram pide descansar {e.value}s (Álbum ID: {mensaje.id}). Reintentando automáticamente...")
                 await asyncio.sleep(e.value + 1)
             except Exception as e:
                 print(f"❌ [ERROR FATAL ÁLBUM] No se pudo enviar el ID {mensaje.id}. Causa: {e}")
@@ -175,7 +184,7 @@ async def procesar_y_enviar(mensaje):
             await asyncio.sleep(2) 
             return True
         except FloodWait as e:
-            print(f"🚨 [ALERTA] Telegram pide descansar {e.value}s (Individual ID: {mensaje.id}). Reintentando...")
+            print(f"🚨 Telegram pide descansar {e.value}s (Individual ID: {mensaje.id}). Reintentando automáticamente...")
             await asyncio.sleep(e.value + 1)
         except Exception as e:
             print(f"❌ [ERROR FATAL INDIVIDUAL] No se pudo enviar el ID {mensaje.id}. Causa: {e}")
@@ -199,7 +208,10 @@ async def radar_en_vivo(client, mensaje):
 # 6. EL MOTOR HISTÓRICO 
 # ==========================================
 def leer_grupos_txt():
-    if not os.path.exists("grupos.txt"): return []
+    if not os.path.exists("grupos.txt"): 
+        print("⚠️ [AVISO] No se encontró el archivo grupos.txt. Creando uno vacío...")
+        open("grupos.txt", "w").close()
+        return []
     grupos_limpios = []
     with open("grupos.txt", "r") as f:
         for linea in f:
@@ -228,19 +240,15 @@ async def aspiradora_historica():
             print(f"📊 PRE-ESCANEO DE GRUPO: {nombre_txt}")
             print("="*50 + "\n")
             
-            if chat.id in FORZAR_IDS:
-                ultimo_id = FORZAR_IDS[chat.id]
-                print(f"⚙️ [MODO MANUAL] Forzando inicio desde el ID: {ultimo_id}")
-            else:
-                ultimo_id = await obtener_progreso(chat.id)
+            ultimo_id = await obtener_progreso(chat.id)
             
             mensajes_pendientes = []
             offset_mensaje_id = 0
             
             if ultimo_id > 0:
-                print(f"🔍 Buscando todo lo nuevo por encima del mensaje #{ultimo_id}...")
+                print(f"🔍 Buscando videos nuevos por encima del mensaje #{ultimo_id}...")
             else:
-                print(f"🔍 Escaneando historial completo por primera vez...")
+                print(f"🔍 Grupo nuevo detectado. Escaneando historial completo desde cero...")
 
             while True:
                 bloque = []
@@ -277,7 +285,7 @@ async def aspiradora_historica():
             print(f"📥 Se encontraron {len(mensajes_pendientes)} archivos nuevos.")
             
             if len(mensajes_pendientes) > 500:
-                print("⏳ [ENFRIAMIENTO] Se leyó un historial masivo. Pausando 15 segundos...")
+                print("⏳ Se leyó un historial masivo. Pausando 15 segundos para no alertar a Telegram...")
                 await asyncio.sleep(15)
 
             mensajes_pendientes.reverse()
@@ -286,54 +294,60 @@ async def aspiradora_historica():
             for mensaje in mensajes_pendientes:
                 fue_enviado = await procesar_y_enviar(mensaje)
                 
+                # 🔥 GUARDA PROGRESO CONSTANTEMENTE 🔥
                 if fue_enviado or await es_duplicado(generar_huella(mensaje)):
                     await guardar_progreso(chat.id, mensaje.id)
                 
                 if fue_enviado:
                     contador_rafaga += 1
                     if contador_rafaga >= 50:
-                        print("⏸️ [DESCANSO] Ráfaga de 50 completada. Respirando 120s (2 minutos) para proteger la cuenta...")
+                        print("⏸️ [DESCANSO DE SEGURIDAD] 50 envíos alcanzados. Pausando 120s (2 minutos)...")
                         await asyncio.sleep(120)
                         
-                        # 🔥 AQUÍ SE DISPARA EL RESPALDO AUTOMÁTICO A TELEGRAM 🔥
+                        # 🔥 RESPALDO AUTOMÁTICO CADA 50 ENVÍOS 🔥
                         asyncio.create_task(enviar_respaldo())
                         
                         contador_rafaga = 0
-                        print("▶️ [REANUDANDO] Conexión renovada...")
+                        print("▶️ [REANUDANDO] Conexión renovada. Continuando...")
             
-            print(f"🏁 Todos los archivos pendientes de {nombre_txt} han sido procesados.")
+            print(f"🏁 Todos los archivos de {nombre_txt} han sido copiados.")
             GRUPOS_EN_HISTORICO.discard(chat.id)
 
         except Exception as e:
             if "Peer id invalid" not in str(e):
-                print(f"❌ [ERROR] Falló al procesar el grupo {nombre_txt}: {e}")
+                print(f"❌ [ERROR] No se pudo procesar el grupo {nombre_txt}. Causa: {e}")
             if enlace in GRUPOS_EN_HISTORICO:
                 GRUPOS_EN_HISTORICO.discard(enlace)
             continue
 
-    # Respaldo final al terminar toda la revisión histórica
+    # Respaldo final al terminar toda la revisión histórica de todos los grupos
     await enviar_respaldo()
-    print("🏁 [MOTOR HISTÓRICO] Revisión antigua finalizada. El Radar asume el control total 24/7.")
+    print("🏁 [MOTOR HISTÓRICO] Revisión antigua finalizada. El bot queda en modo Radar 24/7.")
 
 # ==========================================
-# MÓDULO WEB MÍNIMO (Para que Render no apague)
+# MÓDULO WEB MÍNIMO (Para que Render no apague el bot)
 # ==========================================
 async def handle(request):
-    return web.Response(text="Bot vivo")
+    return web.Response(text="El Almacenador de Videos está vivo y trabajando de fondo.")
 
 async def iniciar_web():
-    app_web = web.Application()
-    app_web.router.add_get('/', handle)
-    runner = web.AppRunner(app_web)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', int(os.environ.get("PORT", 8080)))
-    await site.start()
+    try:
+        app_web = web.Application()
+        app_web.router.add_get('/', handle)
+        runner = web.AppRunner(app_web)
+        await runner.setup()
+        port = int(os.environ.get("PORT", 10000))
+        site = web.TCPSite(runner, '0.0.0.0', port)
+        await site.start()
+        print(f"🌐 Servidor web fantasma iniciado en el puerto {port}")
+    except Exception as e:
+        print(f"⚠️ Aviso: Error al iniciar servidor web (Render): {e}")
 
 # ==========================================
 # 7. ARRANQUE DEL SISTEMA
 # ==========================================
 async def main():
-    # 🔥 Silenciador de consola para errores fantasmas 🔥
+    # 🔥 Silenciador de consola para errores fantasmas de Pyrogram 🔥
     loop = asyncio.get_event_loop()
     def silenciar_errores_molestos(loop, context):
         msg = context.get("exception", context.get("message", ""))
@@ -342,17 +356,18 @@ async def main():
         loop.default_exception_handler(context)
     loop.set_exception_handler(silenciar_errores_molestos)
 
-    await iniciar_db()
     await iniciar_web() 
     print("🚀 Encendiendo el Sistema Dual Obrero...")
     
     await app.start()
     
-    # 🔥 AHORA SÍ: EL BOT RECUPERA SU CEREBRO DE LA NUBE APENAS DESPIERTA 🔥
+    # 🔥 PASO CRÍTICO: Descarga la memoria antes de hacer nada 🔥
     await descargar_respaldo()
     
-    print(f"✅ Destino configurado en el `.env`: {TARGET_CHAT_ID}")
+    # 🔥 PASO CRÍTICO 2: Inicia la BD después de descargar (por si no había nada) 🔥
+    await iniciar_db()
     
+    print(f"✅ Destino configurado: {TARGET_CHAT_ID}")
     print("🔄 Sincronizando chats con Telegram para evitar errores de ID...")
     try:
         async for dialog in app.get_dialogs(limit=200):
@@ -363,13 +378,14 @@ async def main():
     
     try:
         chat_destino = await app.get_chat(TARGET_CHAT_ID)
-        print(f"✅ ¡AHORA SÍ! Conectado exitosamente al grupo de destino: {chat_destino.title}")
+        print(f"✅ Conectado exitosamente al grupo de destino: {chat_destino.title}")
     except Exception as e:
-        print(f"❌ ¡CUIDADO! Sigue sin reconocer el ID. Error: {e}")
+        print(f"❌ ¡CUIDADO! Telegram no reconoce el grupo de destino. Error: {e}")
+        print("Asegúrate de que el bot sea administrador en el grupo destino.")
     
     asyncio.create_task(aspiradora_historica())
     
-    print("✅ Sistema 100% Operativo. El Radar en Vivo está escuchando en el fondo.")
+    print("✅ Sistema 100% Operativo. El Radar en Vivo está en guardia.")
     from pyrogram import idle
     await idle()
     await app.stop()
