@@ -42,7 +42,7 @@ except Exception as e:
     print(f"❌ [ERROR FATAL DE CONFIGURACIÓN] Revisa tu panel de Render o .env: {e}")
     sys.exit(1)
 
-DB_NAME = "memoria_sistema.db"
+DB_NAME = "memoria_fresca_01.db"
 
 # 🔥 BLINDAJE DE SESIÓN CONTRA RENDER 🔥
 if SESSION_STRING:
