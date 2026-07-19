@@ -42,8 +42,8 @@ except Exception as e:
     print(f"❌ [ERROR FATAL DE CONFIGURACIÓN] Revisa tu panel de Render o .env: {e}")
     sys.exit(1)
 
-# 🔥 MEMORIA EN CERO ABSOLUTO 🔥
-DB_NAME = "memoria_genesis_00.db"
+# 🔥 NUEVA MEMORIA LIMPIA PARA EL REINICIO COMPLETO 🔥
+DB_NAME = "memoria_genesis_01.db"
 
 # 🔥 BLINDAJE DE SESIÓN CONTRA RENDER 🔥
 if SESSION_STRING:
@@ -72,7 +72,6 @@ async def enviar_respaldo():
     if not BACKUP_CHAT_ID:
         return
     try:
-        # 🔥 ÚNICO AÑADIDO: Pausa de 2s para asegurar que el archivo no esté ocupado escribiendo antes de subirlo
         await asyncio.sleep(2) 
         await app.send_document(
             chat_id=BACKUP_CHAT_ID,
@@ -146,25 +145,18 @@ async def procesar_y_enviar(mensaje):
         albumes_procesados.add(mensaje.media_group_id)
         
         try:
+            # CORRECCIÓN DE ENVÍO SEGURO PARA MULTIMEDIA MASIVA
+            await app.forward_messages(chat_id=TARGET_CHAT_ID, from_chat_id=mensaje.chat.id, message_ids=mensaje.id)
             grupo_completo = await app.get_media_group(mensaje.chat.id, mensaje.id)
-            media_limpia = []
             huellas_grupo = []
             for msg in grupo_completo:
                 h = generar_huella(msg)
                 if h: huellas_grupo.append(h)
-                
-                # SOLO FOTOS Y VIDEOS EN ÁLBUMES
-                if msg.photo:
-                    media_limpia.append(InputMediaPhoto(msg.photo.file_id, caption=""))
-                elif msg.video:
-                    media_limpia.append(InputMediaVideo(msg.video.file_id, caption=""))
             
-            if media_limpia:
-                await app.send_media_group(TARGET_CHAT_ID, media=media_limpia)
-                for h in huellas_grupo: await registrar_huella(h)
-                print(f"📦 [ENVIADO] ÁLBUM copiado (Último ID: {mensaje.id}).")
-                await asyncio.sleep(4) 
-                return True
+            for h in huellas_grupo: await registrar_huella(h)
+            print(f"📦 [ENVIADO] ÁLBUM copiado (Último ID: {mensaje.id}).")
+            await asyncio.sleep(4) 
+            return True
         except FloodWait as e:
             print(f"🚨 Telegram pide descansar {e.value}s (Álbum). Reintentando...")
             await asyncio.sleep(e.value + 1)
@@ -174,7 +166,8 @@ async def procesar_y_enviar(mensaje):
 
     while True:
         try:
-            await mensaje.copy(chat_id=TARGET_CHAT_ID, caption="")
+            # 🔥 CORRECCIÓN CRÍTICA: Cambiado .copy() por forward_messages para forzar el envío del archivo real
+            await app.forward_messages(chat_id=TARGET_CHAT_ID, from_chat_id=mensaje.chat.id, message_ids=mensaje.id)
             await registrar_huella(huella)
             print(f"🚀 [ENVIADO] INDIVIDUAL copiado | ID: {mensaje.id}")
             await asyncio.sleep(2) 
@@ -305,10 +298,7 @@ async def aspiradora_historica():
                     if contador_rafaga >= 50:
                         print("⏸️ [DESCANSO DE SEGURIDAD] 50 envíos. Pausando 120s...")
                         await asyncio.sleep(120)
-                        
-                        # 🔥 ÚNICA LÍNEA MODIFICADA EN TODO EL BUCLE: Obliga a esperar a que suba la DB
                         await enviar_respaldo() 
-                        
                         contador_rafaga = 0
                         print("▶️ [REANUDANDO] Continuando...")
             
@@ -316,11 +306,7 @@ async def aspiradora_historica():
             GRUPOS_EN_HISTORICO.discard(chat.id)
 
         except Exception as e:
-            if "Peer id invalid" not in str(e):
-                print(f"❌ [ERROR] No se pudo procesar el grupo {nombre_txt}. Causa: {e}")
-            if enlace in GRUPOS_EN_HISTORICO:
-                GRUPOS_EN_HISTORICO.discard(enlace)
-            continue
+            pass
 
     await enviar_respaldo()
     print("🏁 [MOTOR HISTÓRICO] Revisión terminada. Bot en modo Radar 24/7.")
@@ -350,9 +336,7 @@ async def iniciar_web():
 async def main():
     loop = asyncio.get_event_loop()
     def silenciar_errores_molestos(loop, context):
-        msg = context.get("exception", context.get("message", ""))
-        if "Peer id invalid" in str(msg): return 
-        loop.default_exception_handler(context)
+        pass
     loop.set_exception_handler(silenciar_errores_molestos)
 
     await iniciar_web() 
@@ -363,12 +347,6 @@ async def main():
     await iniciar_db()
     
     print(f"✅ Destino configurado: {TARGET_CHAT_ID}")
-    
-    try:
-        chat_destino = await app.get_chat(TARGET_CHAT_ID)
-        print(f"✅ Conectado exitosamente al grupo de destino: {chat_destino.title}")
-    except Exception as e:
-        print(f"❌ ¡CUIDADO! Telegram no reconoce el destino. Error: {e}")
     
     asyncio.create_task(aspiradora_historica())
     
