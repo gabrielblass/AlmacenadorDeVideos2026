@@ -27,7 +27,7 @@ try:
     API_HASH = os.environ.get("API_HASH", "").strip()
     RAW_TARGET = os.environ.get("TARGET_CHAT_ID", "").strip().replace('"', '').replace("'", "")
     
-    # Parche invisible: le inyecta el -100 si le falta, sin que toques Render
+    # Parche invisible: le inyecta el -100 si le falta (Solución al Peer ID Invalid)
     if RAW_TARGET.startswith('-') and not RAW_TARGET.startswith('-100'):
         RAW_TARGET = f"-100{abs(int(RAW_TARGET))}"
         
@@ -50,8 +50,8 @@ except Exception as e:
     print(f"❌ [ERROR FATAL DE CONFIGURACIÓN] Revisa tu panel de Render o .env: {e}")
     sys.exit(1)
 
-# 🔥 NUEVO CEREBRO CON FILTRO MATEMÁTICO 🔥
-DB_NAME = "memoria_blindada_10.db"
+# 🔥 CEREBRO TOTALMENTE NUEVO Y EN BLANCO 🔥
+DB_NAME = "memoria_inmaculada_12.db"
 
 # 🔥 BLINDAJE DE SESIÓN CONTRA RENDER 🔥
 if SESSION_STRING:
@@ -84,7 +84,7 @@ async def enviar_respaldo():
         await app.send_document(
             chat_id=BACKUP_CHAT_ID,
             document=DB_NAME,
-            caption="🛡️ Respaldo Automático de la Memoria (Filtro Estricto)"
+            caption="🛡️ Respaldo Automático de la Memoria (Filtro Matemático)"
         )
         print("☁️ [BACKUP] Memoria guardada en Telegram con éxito.")
     except Exception as e:
@@ -108,7 +108,7 @@ async def descargar_respaldo():
                 await app.download_media(mensaje.document, file_name=DB_NAME)
                 print("✅ Memoria restaurada con éxito.")
                 return
-        print("⚠️ No se encontró respaldo anterior. Iniciando memoria limpia.")
+        print("⚠️ No se encontró respaldo anterior. Iniciando memoria limpia desde cero.")
     except Exception as e:
         if "Peer id invalid" in str(e):
             alt_id = str(BACKUP_CHAT_ID)
@@ -139,7 +139,7 @@ async def guardar_progreso(chat_id, mensaje_id):
 # 3. EL FILTRO DE HUELLA DIGITAL (MATEMÁTICO SUPREMO)
 # ==========================================
 def generar_huella(mensaje):
-    """El filtro estricto: Peso + Ancho + Alto + Duración"""
+    """Filtro matemático estricto: Peso + Ancho + Alto + Duración"""
     media = mensaje.photo or mensaje.video
     if not media: return None
     
@@ -148,7 +148,7 @@ def generar_huella(mensaje):
     alto = getattr(media, 'height', 0) or 0
     duracion = getattr(media, 'duration', 0) or 0
     
-    # Si Telegram oculta los datos (todo es 0), usamos el código único de emergencia
+    # Si todo falla (videos viejos rotos donde Telegram manda ceros), usa el file_unique_id
     if peso == 0 and ancho == 0 and alto == 0 and duracion == 0:
         return getattr(media, "file_unique_id", None)
         
@@ -175,7 +175,7 @@ async def procesar_y_enviar(mensaje):
     if await es_duplicado(huella):
         if getattr(mensaje, "media_group_id", None):
             albumes_procesados.add(mensaje.media_group_id) 
-        print(f"⚠️ [FILTRO] Duplicado matemático ignorado (ID: {mensaje.id}).")
+        print(f"⚠️ [FILTRO] Duplicado ignorado (ID: {mensaje.id}).")
         return False
 
     if getattr(mensaje, "media_group_id", None):
@@ -191,6 +191,7 @@ async def procesar_y_enviar(mensaje):
                 h = generar_huella(msg)
                 if h: huellas_grupo.append(h)
                 
+                # SOLO FOTOS Y VIDEOS EN ÁLBUMES (Ignora todo lo demás)
                 if msg.photo:
                     media_limpia.append(InputMediaPhoto(msg.photo.file_id, caption=""))
                 elif msg.video:
@@ -224,13 +225,14 @@ async def procesar_y_enviar(mensaje):
             return False
 
 # ==========================================
-# 5. EL RADAR EN VIVO
+# 5. EL RADAR EN VIVO (24/7)
 # ==========================================
 @app.on_message(filters.photo | filters.video)
 async def radar_en_vivo(client, mensaje):
     if mensaje.chat.id not in CHATS_MONITOREADOS:
         return
 
+    # MIENTRAS SE ASPIRA EL HISTÓRICO, EL RADAR EN VIVO IGNORA PARA NO CRUZARSE
     if mensaje.chat.id in GRUPOS_EN_HISTORICO:
         return
 
@@ -267,7 +269,7 @@ async def aspiradora_historica():
             chat = await app.get_chat(enlace)
             
             CHATS_MONITOREADOS.add(chat.id)
-            GRUPOS_EN_HISTORICO.add(chat.id)
+            GRUPOS_EN_HISTORICO.add(chat.id) # ACTIVA EL MODO HISTÓRICO PARA ESTE GRUPO
             
             print(f"\n" + "="*50)
             print(f"📊 PRE-ESCANEO DE GRUPO: {nombre_txt}")
@@ -299,6 +301,8 @@ async def aspiradora_historica():
                     if m.id <= ultimo_id:
                         alcanzo_limite = True
                         break
+                    
+                    # FILTRO MAESTRO: Solo pasa fotos y videos a la lista de pendientes
                     if m.photo or m.video:
                         mensajes_pendientes.append(m)
                     offset_mensaje_id = m.id
@@ -308,7 +312,7 @@ async def aspiradora_historica():
 
             if not mensajes_pendientes:
                 print(f"✅ El grupo {nombre_txt} ya está 100% al día.")
-                GRUPOS_EN_HISTORICO.discard(chat.id)
+                GRUPOS_EN_HISTORICO.discard(chat.id) # DESACTIVA EL HISTÓRICO, EMPIEZA EL RADAR 24/7
                 continue
                 
             print(f"📥 Se encontraron {len(mensajes_pendientes)} archivos nuevos.")
@@ -335,6 +339,7 @@ async def aspiradora_historica():
                 if fue_enviado or await es_duplicado(generar_huella(mensaje)):
                     await guardar_progreso(chat.id, mensaje.id)
                 
+                # LA MATEMÁTICA EXACTA: Cuenta 1 por cada mensaje que cruza
                 if fue_enviado:
                     contador_rafaga += 1
                     if contador_rafaga >= 50:
@@ -345,7 +350,7 @@ async def aspiradora_historica():
                         print("▶️ [REANUDANDO] Continuando...")
             
             print(f"🏁 Todos los archivos de {nombre_txt} han sido copiados.")
-            GRUPOS_EN_HISTORICO.discard(chat.id)
+            GRUPOS_EN_HISTORICO.discard(chat.id) # TERMINÓ EL PASADO. EL RADAR SE ACTIVA AQUÍ.
 
         except Exception as e:
             if "Peer id invalid" not in str(e):
