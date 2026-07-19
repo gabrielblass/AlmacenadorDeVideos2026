@@ -43,7 +43,7 @@ except Exception as e:
     sys.exit(1)
 
 # 🔥 MEMORIA EN CERO ABSOLUTO 🔥
-DB_NAME = "memoria_definitiva_04.db"
+DB_NAME = "memoria_genesis_00.db"
 
 # 🔥 BLINDAJE DE SESIÓN CONTRA RENDER 🔥
 if SESSION_STRING:
@@ -72,6 +72,8 @@ async def enviar_respaldo():
     if not BACKUP_CHAT_ID:
         return
     try:
+        # 🔥 ÚNICO AÑADIDO: Pausa de 2s para asegurar que el archivo no esté ocupado escribiendo antes de subirlo
+        await asyncio.sleep(2) 
         await app.send_document(
             chat_id=BACKUP_CHAT_ID,
             document=DB_NAME,
@@ -303,7 +305,10 @@ async def aspiradora_historica():
                     if contador_rafaga >= 50:
                         print("⏸️ [DESCANSO DE SEGURIDAD] 50 envíos. Pausando 120s...")
                         await asyncio.sleep(120)
-                        await enviar_respaldo()
+                        
+                        # 🔥 ÚNICA LÍNEA MODIFICADA EN TODO EL BUCLE: Obliga a esperar a que suba la DB
+                        await enviar_respaldo() 
+                        
                         contador_rafaga = 0
                         print("▶️ [REANUDANDO] Continuando...")
             
