@@ -42,7 +42,8 @@ except Exception as e:
     print(f"❌ [ERROR FATAL DE CONFIGURACIÓN] Revisa tu panel de Render o .env: {e}")
     sys.exit(1)
 
-DB_NAME = "memoria_fresca_01.db"
+# 🔥 MEMORIA EN CERO ABSOLUTO 🔥
+DB_NAME = "memoria_cero_absoluto.db"
 
 # 🔥 BLINDAJE DE SESIÓN CONTRA RENDER 🔥
 if SESSION_STRING:
@@ -279,6 +280,16 @@ async def aspiradora_historica():
                 await asyncio.sleep(15)
 
             mensajes_pendientes.reverse()
+
+            # 🔥 RASTREADOR DE ENLACES: Te muestra el video exacto donde va a empezar 🔥
+            if mensajes_pendientes and ultimo_id == 0:
+                primer_msg = mensajes_pendientes[0]
+                link = f"https://t.me/c/{str(chat.id).replace('-100', '')}/{primer_msg.id}"
+                print("\n" + "🔥"*25)
+                print(f"👁️ RASTREADOR: EL BOT DETECTÓ ESTE VIDEO COMO EL PRIMERO:")
+                print(f"👉 Dale clic para verlo: {link}")
+                print("🔥"*25 + "\n")
+
             contador_rafaga = 0
             
             for mensaje in mensajes_pendientes:
