@@ -43,7 +43,7 @@ except Exception as e:
     sys.exit(1)
 
 # 🔥 MEMORIA EN CERO ABSOLUTO 🔥
-DB_NAME = "memoria_cero_absoluto.db"
+DB_NAME = "memoria_definitiva_04.db"
 
 # 🔥 BLINDAJE DE SESIÓN CONTRA RENDER 🔥
 if SESSION_STRING:
@@ -303,7 +303,7 @@ async def aspiradora_historica():
                     if contador_rafaga >= 50:
                         print("⏸️ [DESCANSO DE SEGURIDAD] 50 envíos. Pausando 120s...")
                         await asyncio.sleep(120)
-                        asyncio.create_task(enviar_respaldo())
+                        await enviar_respaldo()
                         contador_rafaga = 0
                         print("▶️ [REANUDANDO] Continuando...")
             
