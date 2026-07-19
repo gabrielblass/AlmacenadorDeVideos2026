@@ -42,7 +42,8 @@ except Exception as e:
     print(f"❌ [ERROR FATAL DE CONFIGURACIÓN] Revisa tu panel de Render o .env: {e}")
     sys.exit(1)
 
-DB_NAME = "memoria_sistema.db"
+# 🔥 AQUÍ ESTÁ LA CORRECCIÓN: NOMBRE NUEVO PARA QUE NAZCA DE CERO 🔥
+DB_NAME = "memoria_desde_cero_absoluto.db"
 
 # 🔥 BLINDAJE DE SESIÓN CONTRA RENDER 🔥
 if SESSION_STRING:
@@ -293,7 +294,7 @@ async def aspiradora_historica():
                     if contador_rafaga >= 50:
                         print("⏸️ [DESCANSO DE SEGURIDAD] 50 envíos. Pausando 120s...")
                         await asyncio.sleep(120)
-                        await enviar_respaldo() # SE CAMBIÓ AQUÍ PARA QUE SUBA SÍ O SÍ
+                        await enviar_respaldo() 
                         contador_rafaga = 0
                         print("▶️ [REANUDANDO] Continuando...")
             
