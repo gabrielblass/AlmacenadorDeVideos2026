@@ -26,7 +26,15 @@ try:
     API_ID = int(os.environ.get("API_ID", 0))
     API_HASH = os.environ.get("API_HASH", "").strip()
     RAW_TARGET = os.environ.get("TARGET_CHAT_ID", "").strip().replace('"', '').replace("'", "")
+    
+    # Parche invisible: le inyecta el -100 si le falta, sin que toques Render
+    if RAW_TARGET.startswith('-') and not RAW_TARGET.startswith('-100'):
+        RAW_TARGET = f"-100{abs(int(RAW_TARGET))}"
+        
     RAW_BACKUP = os.environ.get("BACKUP_CHAT_ID", "").strip().replace('"', '').replace("'", "")
+    if RAW_BACKUP.startswith('-') and not RAW_BACKUP.startswith('-100'):
+        RAW_BACKUP = f"-100{abs(int(RAW_BACKUP))}"
+        
     SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
     
     if not API_ID or not API_HASH:
@@ -36,13 +44,14 @@ try:
     if not RAW_BACKUP:
         raise ValueError("Falta BACKUP_CHAT_ID. Sin esto el bot perderá la memoria en Render.")
         
-    TARGET_CHAT_ID = int(RAW_TARGET) if RAW_TARGET.lstrip('-').isdigit() else RAW_TARGET
-    BACKUP_CHAT_ID = int(RAW_BACKUP) if RAW_BACKUP.lstrip('-').isdigit() else RAW_BACKUP
+    TARGET_CHAT_ID = int(RAW_TARGET)
+    BACKUP_CHAT_ID = int(RAW_BACKUP)
 except Exception as e:
     print(f"❌ [ERROR FATAL DE CONFIGURACIÓN] Revisa tu panel de Render o .env: {e}")
     sys.exit(1)
 
-DB_NAME = "memoria_sistema.db"
+# 🔥 NUEVO CEREBRO CON FILTRO MATEMÁTICO 🔥
+DB_NAME = "memoria_blindada_10.db"
 
 # 🔥 BLINDAJE DE SESIÓN CONTRA RENDER 🔥
 if SESSION_STRING:
@@ -75,12 +84,11 @@ async def enviar_respaldo():
         await app.send_document(
             chat_id=BACKUP_CHAT_ID,
             document=DB_NAME,
-            caption="🛡️ Respaldo Automático de la Memoria (SQLite)"
+            caption="🛡️ Respaldo Automático de la Memoria (Filtro Estricto)"
         )
         print("☁️ [BACKUP] Memoria guardada en Telegram con éxito.")
     except Exception as e:
         if "Peer id invalid" in str(e):
-            # 🔥 CORRECCIÓN DEFINITIVA: Si falla por el -100, intenta con el ID alternativo automáticamente
             alt_id = str(BACKUP_CHAT_ID)
             alt_id = int(alt_id.replace("-100", "-")) if alt_id.startswith("-100") else int(alt_id.replace("-", "-100"))
             try:
@@ -94,7 +102,6 @@ async def enviar_respaldo():
 async def descargar_respaldo():
     print("🔄 Buscando respaldo de memoria en la nube de Telegram...")
     try:
-        # Busca primero en el ID original
         async for mensaje in app.get_chat_history(BACKUP_CHAT_ID, limit=20):
             if mensaje.document and mensaje.document.file_name == DB_NAME:
                 print("📥 Respaldo encontrado. Descargando e inyectando memoria...")
@@ -129,13 +136,23 @@ async def guardar_progreso(chat_id, mensaje_id):
         await db.commit()
 
 # ==========================================
-# 3. EL FILTRO DE HUELLA DIGITAL (ID OFICIAL DE TELEGRAM)
+# 3. EL FILTRO DE HUELLA DIGITAL (MATEMÁTICO SUPREMO)
 # ==========================================
 def generar_huella(mensaje):
-    """Genera un código único usando el ID oficial e infalible de Telegram."""
+    """El filtro estricto: Peso + Ancho + Alto + Duración"""
     media = mensaje.photo or mensaje.video
     if not media: return None
-    return getattr(media, "file_unique_id", None)
+    
+    peso = getattr(media, 'file_size', 0) or 0
+    ancho = getattr(media, 'width', 0) or 0
+    alto = getattr(media, 'height', 0) or 0
+    duracion = getattr(media, 'duration', 0) or 0
+    
+    # Si Telegram oculta los datos (todo es 0), usamos el código único de emergencia
+    if peso == 0 and ancho == 0 and alto == 0 and duracion == 0:
+        return getattr(media, "file_unique_id", None)
+        
+    return f"{peso}_{ancho}_{alto}_{duracion}"
 
 async def es_duplicado(huella):
     async with aiosqlite.connect(DB_NAME, timeout=15) as db:
@@ -158,7 +175,7 @@ async def procesar_y_enviar(mensaje):
     if await es_duplicado(huella):
         if getattr(mensaje, "media_group_id", None):
             albumes_procesados.add(mensaje.media_group_id) 
-        print(f"⚠️ [FILTRO] Duplicado ignorado (ID: {mensaje.id}).")
+        print(f"⚠️ [FILTRO] Duplicado matemático ignorado (ID: {mensaje.id}).")
         return False
 
     if getattr(mensaje, "media_group_id", None):
@@ -174,7 +191,6 @@ async def procesar_y_enviar(mensaje):
                 h = generar_huella(msg)
                 if h: huellas_grupo.append(h)
                 
-                # SOLO FOTOS Y VIDEOS EN ÁLBUMES
                 if msg.photo:
                     media_limpia.append(InputMediaPhoto(msg.photo.file_id, caption=""))
                 elif msg.video:
@@ -208,7 +224,7 @@ async def procesar_y_enviar(mensaje):
             return False
 
 # ==========================================
-# 5. EL RADAR EN VIVO (SOLO FOTOS Y VIDEOS)
+# 5. EL RADAR EN VIVO
 # ==========================================
 @app.on_message(filters.photo | filters.video)
 async def radar_en_vivo(client, mensaje):
@@ -283,7 +299,6 @@ async def aspiradora_historica():
                     if m.id <= ultimo_id:
                         alcanzo_limite = True
                         break
-                    # SOLO AGREGA FOTOS Y VIDEOS
                     if m.photo or m.video:
                         mensajes_pendientes.append(m)
                     offset_mensaje_id = m.id
@@ -325,7 +340,7 @@ async def aspiradora_historica():
                     if contador_rafaga >= 50:
                         print("⏸️ [DESCANSO DE SEGURIDAD] 50 envíos procesados. Guardando DB y pausando 2 minutos...")
                         await enviar_respaldo() 
-                        await asyncio.sleep(120) # 🔥 AQUÍ ESTÁN LOS 2 MINUTOS EXACTOS 🔥
+                        await asyncio.sleep(120) 
                         contador_rafaga = 0
                         print("▶️ [REANUDANDO] Continuando...")
             
