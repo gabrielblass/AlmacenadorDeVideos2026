@@ -42,8 +42,7 @@ except Exception as e:
     print(f"❌ [ERROR FATAL DE CONFIGURACIÓN] Revisa tu panel de Render o .env: {e}")
     sys.exit(1)
 
-# 🔥 AQUÍ ESTÁ LA CORRECCIÓN: NOMBRE NUEVO PARA QUE NAZCA DE CERO 🔥
-DB_NAME = "memoria_desde_cero_absoluto.db"
+DB_NAME = "memoria_sistema.db"
 
 # 🔥 BLINDAJE DE SESIÓN CONTRA RENDER 🔥
 if SESSION_STRING:
@@ -72,7 +71,7 @@ async def enviar_respaldo():
     if not BACKUP_CHAT_ID:
         return
     try:
-        await asyncio.sleep(2) # Pausa técnica para liberar el archivo antes de subirlo
+        await asyncio.sleep(2)
         await app.send_document(
             chat_id=BACKUP_CHAT_ID,
             document=DB_NAME,
@@ -80,19 +79,42 @@ async def enviar_respaldo():
         )
         print("☁️ [BACKUP] Memoria guardada en Telegram con éxito.")
     except Exception as e:
-        print(f"⚠️ [ALERTA] Error al guardar respaldo en el canal: {e}")
+        if "Peer id invalid" in str(e):
+            # 🔥 CORRECCIÓN DEFINITIVA: Si falla por el -100, intenta con el ID alternativo automáticamente
+            alt_id = str(BACKUP_CHAT_ID)
+            alt_id = int(alt_id.replace("-100", "-")) if alt_id.startswith("-100") else int(alt_id.replace("-", "-100"))
+            try:
+                await app.send_document(chat_id=alt_id, document=DB_NAME, caption="🛡️ Respaldo Automático (ID Corregido)")
+                print("☁️ [BACKUP] Memoria guardada exitosamente (con ID auto-corregido).")
+            except Exception as e2:
+                print(f"⚠️ [ALERTA] Falló el ID alternativo también: {e2}")
+        else:
+            print(f"⚠️ [ALERTA] Error al guardar respaldo en el canal: {e}")
 
 async def descargar_respaldo():
     print("🔄 Buscando respaldo de memoria en la nube de Telegram...")
     try:
+        # Busca primero en el ID original
         async for mensaje in app.get_chat_history(BACKUP_CHAT_ID, limit=20):
             if mensaje.document and mensaje.document.file_name == DB_NAME:
                 print("📥 Respaldo encontrado. Descargando e inyectando memoria...")
                 await app.download_media(mensaje.document, file_name=DB_NAME)
                 print("✅ Memoria restaurada con éxito.")
                 return
-        print("⚠️ No se encontró respaldo anterior (O el canal está vacío). Iniciando memoria limpia.")
+        print("⚠️ No se encontró respaldo anterior. Iniciando memoria limpia.")
     except Exception as e:
+        if "Peer id invalid" in str(e):
+            alt_id = str(BACKUP_CHAT_ID)
+            alt_id = int(alt_id.replace("-100", "-")) if alt_id.startswith("-100") else int(alt_id.replace("-", "-100"))
+            try:
+                async for mensaje in app.get_chat_history(alt_id, limit=20):
+                    if mensaje.document and mensaje.document.file_name == DB_NAME:
+                        print("📥 Respaldo encontrado. Descargando...")
+                        await app.download_media(mensaje.document, file_name=DB_NAME)
+                        print("✅ Memoria restaurada con éxito.")
+                        return
+            except:
+                pass
         print(f"❌ [CRÍTICO] Error al intentar descargar el respaldo: {e}")
 
 async def obtener_progreso(chat_id):
@@ -110,7 +132,7 @@ async def guardar_progreso(chat_id, mensaje_id):
 # 3. EL FILTRO DE HUELLA DIGITAL (ID OFICIAL DE TELEGRAM)
 # ==========================================
 def generar_huella(mensaje):
-    """Genera un código único usando el ID oficial e infalible de Telegram (SOLO FOTOS Y VIDEOS)."""
+    """Genera un código único usando el ID oficial e infalible de Telegram."""
     media = mensaje.photo or mensaje.video
     if not media: return None
     return getattr(media, "file_unique_id", None)
@@ -281,6 +303,15 @@ async def aspiradora_historica():
                 await asyncio.sleep(15)
 
             mensajes_pendientes.reverse()
+
+            if mensajes_pendientes and ultimo_id == 0:
+                primer_msg = mensajes_pendientes[0]
+                link = f"https://t.me/c/{str(chat.id).replace('-100', '')}/{primer_msg.id}"
+                print("\n" + "🔥"*25)
+                print(f"👁️ RASTREADOR: EL BOT DETECTÓ ESTE VIDEO COMO EL PRIMERO:")
+                print(f"👉 Dale clic para verlo: {link}")
+                print("🔥"*25 + "\n")
+
             contador_rafaga = 0
             
             for mensaje in mensajes_pendientes:
@@ -292,9 +323,9 @@ async def aspiradora_historica():
                 if fue_enviado:
                     contador_rafaga += 1
                     if contador_rafaga >= 50:
-                        print("⏸️ [DESCANSO DE SEGURIDAD] 50 envíos. Pausando 120s...")
-                        await asyncio.sleep(120)
+                        print("⏸️ [DESCANSO DE SEGURIDAD] 50 envíos procesados. Guardando DB y pausando 2 minutos...")
                         await enviar_respaldo() 
+                        await asyncio.sleep(120) # 🔥 AQUÍ ESTÁN LOS 2 MINUTOS EXACTOS 🔥
                         contador_rafaga = 0
                         print("▶️ [REANUDANDO] Continuando...")
             
