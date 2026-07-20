@@ -26,14 +26,7 @@ try:
     API_ID = int(os.environ.get("API_ID", 0))
     API_HASH = os.environ.get("API_HASH", "").strip()
     RAW_TARGET = os.environ.get("TARGET_CHAT_ID", "").strip().replace('"', '').replace("'", "")
-    
-    # Parche invisible: le inyecta el -100 si le falta (Solución al Peer ID Invalid)
-    if RAW_TARGET.startswith('-') and not RAW_TARGET.startswith('-100'):
-        RAW_TARGET = f"-100{abs(int(RAW_TARGET))}"
-        
     RAW_BACKUP = os.environ.get("BACKUP_CHAT_ID", "").strip().replace('"', '').replace("'", "")
-    if RAW_BACKUP.startswith('-') and not RAW_BACKUP.startswith('-100'):
-        RAW_BACKUP = f"-100{abs(int(RAW_BACKUP))}"
         
     SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
     
@@ -51,7 +44,7 @@ except Exception as e:
     sys.exit(1)
 
 # 🔥 CEREBRO TOTALMENTE NUEVO Y EN BLANCO 🔥
-DB_NAME = "memoria_inmaculada_12.db"
+DB_NAME = "memoria_definitiva_16.db"
 
 # 🔥 BLINDAJE DE SESIÓN CONTRA RENDER 🔥
 if SESSION_STRING:
@@ -240,7 +233,7 @@ async def radar_en_vivo(client, mensaje):
     await procesar_y_enviar(mensaje)
 
 # ==========================================
-# 6. EL MOTOR HISTÓRICO 
+# 6. EL MOTOR HISTÓRICO (RESTAURADO)
 # ==========================================
 def leer_grupos_txt():
     if not os.path.exists("grupos.txt"): 
