@@ -44,7 +44,7 @@ except Exception as e:
     sys.exit(1)
 
 # 🔥 CEREBRO TOTALMENTE NUEVO Y EN BLANCO 🔥
-DB_NAME = "memoria_final_23.db"
+DB_NAME = "memoria_blindada_24.db"
 
 # 🔥 BLINDAJE DE SESIÓN CONTRA RENDER 🔥
 if SESSION_STRING:
@@ -132,7 +132,6 @@ async def guardar_progreso(chat_id, mensaje_id):
 # 3. EL FILTRO DE HUELLA DIGITAL (SOLO ID ÚNICO)
 # ==========================================
 def generar_huella(mensaje):
-    """Filtro ultra-rápido: Solo usa el ID único del archivo (file_unique_id)"""
     media = mensaje.photo or mensaje.video
     if not media: return None
     return getattr(media, "file_unique_id", None)
@@ -214,8 +213,6 @@ async def procesar_y_enviar(mensaje):
 async def radar_en_vivo(client, mensaje):
     if mensaje.chat.id not in CHATS_MONITOREADOS:
         return
-
-    # MIENTRAS SE ASPIRA EL HISTÓRICO, EL RADAR EN VIVO IGNORA PARA NO CRUZARSE
     if mensaje.chat.id in GRUPOS_EN_HISTORICO:
         return
 
@@ -223,7 +220,7 @@ async def radar_en_vivo(client, mensaje):
     await procesar_y_enviar(mensaje)
 
 # ==========================================
-# 6. EL MOTOR HISTÓRICO 
+# 6. EL MOTOR HISTÓRICO (ARREGLADO A PRUEBA DE FALLOS)
 # ==========================================
 def leer_grupos_txt():
     if not os.path.exists("grupos.txt"): 
@@ -250,7 +247,6 @@ async def aspiradora_historica():
         
         try:
             chat = await app.get_chat(enlace)
-            
             CHATS_MONITOREADOS.add(chat.id)
             GRUPOS_EN_HISTORICO.add(chat.id) 
             
@@ -260,36 +256,57 @@ async def aspiradora_historica():
             
             ultimo_id = await obtener_progreso(chat.id)
             mensajes_pendientes = []
+            offset_mensaje_id = 0 # <-- AQUÍ ESTÁ EL TRUCO PARA NO PERDERSE
             
             if ultimo_id > 0:
                 print(f"🔍 Buscando archivos nuevos por encima del mensaje #{ultimo_id}...")
             else:
                 print(f"🔍 Grupo nuevo detectado. Escaneando historial completo desde cero...")
 
-            print("⏳ Extrayendo TODO el historial de Telegram sin saltar nada...")
+            print("⏳ Extrayendo TODO el historial por bloques (A prueba de cortes de Telegram)...")
             
-            try:
-                async for m in app.get_chat_history(chat.id):
+            # EL BUCLE REPARADO: No se rendirá si Telegram le tira FloodWait
+            while True:
+                bloque = []
+                try:
+                    async for m in app.get_chat_history(chat.id, offset_id=offset_mensaje_id, limit=100):
+                        bloque.append(m)
+                except FloodWait as e:
+                    print(f"🚨 Freno de lectura. Telegram pide pausa de {e.value}s... Esperando y reintentando.")
+                    await asyncio.sleep(e.value + 1)
+                    continue # Vuelve a intentar leer exactamente donde se quedó
+
+                if not bloque:
+                    break # Ya no hay más mensajes
+
+                alcanzo_limite = False
+                for m in bloque:
                     if m.id <= ultimo_id:
+                        alcanzo_limite = True
                         break
                     
                     if m.photo or m.video:
                         mensajes_pendientes.append(m)
-            except FloodWait as e:
-                print(f"🚨 Telegram pide pausa de {e.value}s durante la lectura...")
-                await asyncio.sleep(e.value + 1)
+                    
+                    offset_mensaje_id = m.id # Actualiza la página para el siguiente bloque
+
+                if alcanzo_limite:
+                    break
+                    
+                await asyncio.sleep(1.5) # Pausa cortita para evitar ban
 
             if not mensajes_pendientes:
                 print(f"✅ El grupo {nombre_txt} ya está 100% al día.")
                 GRUPOS_EN_HISTORICO.discard(chat.id) 
                 continue
                 
-            print(f"📥 Se encontraron {len(mensajes_pendientes)} archivos multimedia.")
+            print(f"📥 Se extrajeron {len(mensajes_pendientes)} archivos multimedia.")
             
             if len(mensajes_pendientes) > 500:
                 print("⏳ Se leyó un historial masivo. Pausando 15 segundos para proteger la RAM...")
                 await asyncio.sleep(15)
 
+            # Volteamos la lista para enviar del más viejo (3182) al más nuevo
             mensajes_pendientes.reverse()
 
             if mensajes_pendientes and ultimo_id == 0:
@@ -311,10 +328,10 @@ async def aspiradora_historica():
                 if archivos_enviados > 0:
                     contador_rafaga += archivos_enviados
                     
-                    # EL PUTO DESCANSO GARANTIZADO CON ENVÍO DE .DB
+                    # DESCANSO Y .DB GARANTIZADO CADA 50 ARCHIVOS
                     if contador_rafaga >= 50:
                         print(f"⏸️ Límite de {contador_rafaga} archivos alcanzado. Tirando el .db al grupo...")
-                        await enviar_respaldo() # DISPARA LA BASE DE DATOS EN EL ACTO
+                        await enviar_respaldo()
                         print("💤 Archivo enviado. Durmiendo 120 segundos sin joder a Telegram...")
                         await asyncio.sleep(120) 
                         contador_rafaga = 0
