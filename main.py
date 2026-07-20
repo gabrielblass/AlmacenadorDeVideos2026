@@ -43,8 +43,8 @@ except Exception as e:
     print(f"❌ [ERROR FATAL DE CONFIGURACIÓN] Revisa tu panel de Render o .env: {e}")
     sys.exit(1)
 
-# 🔥 CEREBRO TOTALMENTE NUEVO (PARA RETOMAR EL 3182) 🔥
-DB_NAME = "memoria_inmortal_26.db"
+# 🔥 CEREBRO TOTALMENTE NUEVO 🔥
+DB_NAME = "memoria_definitiva_27.db"
 
 # 🔥 BLINDAJE DE SESIÓN CONTRA RENDER 🔥
 if SESSION_STRING:
@@ -77,7 +77,7 @@ async def enviar_respaldo():
         await app.send_document(
             chat_id=BACKUP_CHAT_ID,
             document=DB_NAME,
-            caption="🛡️ Respaldo Automático de la Memoria (Búsqueda por IDs cronológicos)"
+            caption="🛡️ Respaldo Automático de la Memoria"
         )
         print("☁️ [BACKUP] Memoria .db guardada en Telegram con éxito.")
     except Exception as e:
@@ -102,7 +102,7 @@ async def descargar_respaldo():
                 print("✅ Memoria restaurada con éxito.")
                 return
         print("⚠️ No se encontró respaldo anterior. Iniciando memoria limpia desde cero.")
-    except Exception as e:
+    except Exception:
         pass
 
 async def obtener_progreso(chat_id):
@@ -136,7 +136,7 @@ async def registrar_huella(huella):
         await db.commit()
 
 # ==========================================
-# 4. EL MOTOR DE REENVÍO (CON SISTEMA ANTI-FANTASMAS)
+# 4. EL MOTOR DE REENVÍO
 # ==========================================
 async def procesar_y_enviar(mensaje):
     huella = generar_huella(mensaje)
@@ -177,20 +177,7 @@ async def procesar_y_enviar(mensaje):
             print(f"🚨 Telegram pide descansar {e.value}s (Álbum). Reintentando...")
             await asyncio.sleep(e.value + 1)
         except Exception as e:
-            if "Peer id invalid" in str(e):
-                print(f"⚠️ [ALERTA] Álbum Fantasma detectado (ID {mensaje.id}). Usando reenvío nativo de emergencia...")
-                try:
-                    # FALLBACK: Reenvío nativo forzado para saltar el bug de Telegram
-                    msg_ids = [m.id for m in grupo_completo]
-                    await app.forward_messages(TARGET_CHAT_ID, mensaje.chat.id, msg_ids)
-                    for h in huellas_grupo: await registrar_huella(h)
-                    print(f"📦 [REENVIADO DE EMERGENCIA] Álbum de {len(msg_ids)} archivos (Último ID: {mensaje.id}).")
-                    await asyncio.sleep(4)
-                    return len(msg_ids)
-                except Exception as fallback_e:
-                    print(f"❌ [ERROR FATAL ÁLBUM] Ni reenviando pasó el ID {mensaje.id}: {fallback_e}")
-            else:
-                print(f"❌ [ERROR ÁLBUM] No se pudo enviar el ID {mensaje.id}. Causa: {e}")
+            print(f"❌ [ERROR ÁLBUM] No se pudo enviar el ID {mensaje.id}. Causa: {e}")
         return 0
 
     while True:
@@ -204,21 +191,8 @@ async def procesar_y_enviar(mensaje):
             print(f"🚨 Telegram pide descansar {e.value}s (Individual). Reintentando...")
             await asyncio.sleep(e.value + 1)
         except Exception as e:
-            if "Peer id invalid" in str(e):
-                print(f"⚠️ [ALERTA] Archivo Fantasma detectado (ID {mensaje.id}). Usando reenvío nativo de emergencia...")
-                try:
-                    # FALLBACK INDIVIDUAL: Reenvío nativo forzado para saltar el bug de Telegram
-                    await app.forward_messages(TARGET_CHAT_ID, mensaje.chat.id, mensaje.id)
-                    await registrar_huella(huella)
-                    print(f"🚀 [REENVIADO DE EMERGENCIA] INDIVIDUAL superó el bloqueo fantasma | ID: {mensaje.id}")
-                    await asyncio.sleep(2)
-                    return 1
-                except Exception as fallback_e:
-                    print(f"❌ [ERROR FATAL INDIVIDUAL] Ni reenviando pasó el ID {mensaje.id}: {fallback_e}")
-                    return 0
-            else:
-                print(f"❌ [ERROR INDIVIDUAL] No se pudo enviar el ID {mensaje.id}. Causa: {e}")
-                return 0
+            print(f"❌ [ERROR INDIVIDUAL] No se pudo enviar el ID {mensaje.id}. Causa: {e}")
+            return 0
 
 # ==========================================
 # 5. EL RADAR EN VIVO (24/7)
@@ -234,7 +208,7 @@ async def radar_en_vivo(client, mensaje):
     await procesar_y_enviar(mensaje)
 
 # ==========================================
-# 6. EL MOTOR HISTÓRICO (EXCAVADORA CRONOLÓGICA INVENCIBLE)
+# 6. EL MOTOR HISTÓRICO (EL MÉTODO CLÁSICO QUE SÍ FUNCIONA)
 # ==========================================
 def leer_grupos_txt():
     if not os.path.exists("grupos.txt"): 
@@ -269,70 +243,70 @@ async def aspiradora_historica():
             print("="*50 + "\n")
             
             ultimo_id = await obtener_progreso(chat.id)
+            mensajes_pendientes = []
             
-            top_id = 0
-            async for m in app.get_chat_history(chat.id, limit=1):
-                top_id = m.id
-                
-            if top_id == 0:
-                print(f"✅ El grupo {nombre_txt} parece estar vacío.")
-                GRUPOS_EN_HISTORICO.discard(chat.id)
+            if ultimo_id > 0:
+                print(f"🔍 Retomando desde el último ID guardado: #{ultimo_id}")
+            else:
+                print(f"🔍 Grupo nuevo. Extrayendo el historial completo...")
+
+            # EL MÉTODO ANTIGUO Y CONFIABLE: Lee todo hacia atrás sin marearse
+            try:
+                async for m in app.get_chat_history(chat.id):
+                    # Si llegamos al punto que ya procesamos en el pasado, nos detenemos
+                    if m.id <= ultimo_id:
+                        break
+                    
+                    if m.photo or m.video:
+                        mensajes_pendientes.append(m)
+            except Exception as e:
+                print(f"⚠️ Error al leer el historial: {e}")
                 continue
 
-            if ultimo_id == 0:
-                ultimo_id = 1
-                print(f"🔍 Escaneando CRONOLÓGICAMENTE desde el ID 1 hasta el ID {top_id}...")
-            else:
-                ultimo_id += 1
-                print(f"🔍 Retomando CRONOLÓGICAMENTE desde el ID {ultimo_id} hasta el ID {top_id}...")
+            if not mensajes_pendientes:
+                print(f"✅ El grupo {nombre_txt} ya está 100% al día.")
+                GRUPOS_EN_HISTORICO.discard(chat.id) 
+                continue
+                
+            print(f"📥 Se extrajeron {len(mensajes_pendientes)} archivos multimedia.")
+            
+            if len(mensajes_pendientes) > 500:
+                print("⏳ Historial masivo detectado. Pausando 10 segundos por seguridad...")
+                await asyncio.sleep(10)
+
+            # Volteamos la lista para enviar desde el 3182 hacia el presente
+            mensajes_pendientes.reverse()
+
+            # Rastreador visual
+            primer_msg = mensajes_pendientes[0]
+            link = f"https://t.me/c/{str(chat.id).replace('-100', '')}/{primer_msg.id}"
+            print("\n" + "🔥"*25)
+            print(f"👁️ RASTREADOR: EL BOT COMENZARÁ A ENVIAR DESDE ESTE VIDEO (ID: {primer_msg.id}):")
+            print(f"👉 Link exacto: {link}")
+            print("🔥"*25 + "\n")
 
             contador_rafaga = 0
-            primer_encontrado = False
-
-            while ultimo_id <= top_id:
-                limite = min(ultimo_id + 199, top_id)
-                ids_a_buscar = list(range(ultimo_id, limite + 1))
+            
+            for mensaje in mensajes_pendientes:
+                archivos_enviados = await procesar_y_enviar(mensaje)
                 
-                try:
-                    bloque_mensajes = await app.get_messages(chat.id, ids_a_buscar)
-                except FloodWait as e:
-                    print(f"🚨 Freno de lectura. Telegram pide pausa de {e.value}s...")
-                    await asyncio.sleep(e.value + 1)
-                    continue
-                except Exception as e:
-                    print(f"⚠️ Error leyendo bloque: {e}")
-                    await asyncio.sleep(2)
-                    continue
-
-                for m in bloque_mensajes:
-                    if m is None or m.empty:
-                        continue 
-                        
-                    if m.photo or m.video:
-                        if not primer_encontrado:
-                            link = f"https://t.me/c/{str(chat.id).replace('-100', '')}/{m.id}"
-                            print("\n" + "🔥"*25)
-                            print(f"👁️ RASTREADOR: EL BOT ATRAPÓ EL PRIMER VIDEO DEL GRUPO (ID: {m.id}):")
-                            print(f"👉 Link exacto: {link}")
-                            print("🔥"*25 + "\n")
-                            primer_encontrado = True
-
-                        archivos_enviados = await procesar_y_enviar(m)
-                        
-                        if archivos_enviados > 0:
-                            contador_rafaga += archivos_enviados
-                            if contador_rafaga >= 50:
-                                print(f"⏸️ Límite de {contador_rafaga} archivos. Tirando el .db y durmiendo...")
-                                await enviar_respaldo()
-                                await asyncio.sleep(120) 
-                                contador_rafaga = 0
-                                print("▶️ [REANUDANDO] Continuando con el siguiente bloque...")
-
-                ultimo_id = ids_a_buscar[-1] + 1
-                await guardar_progreso(chat.id, ids_a_buscar[-1])
-                await asyncio.sleep(1.5)
-
-            print(f"🏁 Todos los archivos de {nombre_txt} han sido copiados cronológicamente.")
+                # Actualizamos la memoria con cada archivo que pasa
+                if archivos_enviados > 0 or await es_duplicado(generar_huella(mensaje)):
+                    await guardar_progreso(chat.id, mensaje.id)
+                
+                if archivos_enviados > 0:
+                    contador_rafaga += archivos_enviados
+                    
+                    # EL DESCANSO Y RESPALDO QUE PEDISTE
+                    if contador_rafaga >= 50:
+                        print(f"⏸️ Límite de {contador_rafaga} archivos. Tirando el .db al grupo...")
+                        await enviar_respaldo()
+                        print("💤 Archivo enviado. Durmiendo 120 segundos sin joder a Telegram...")
+                        await asyncio.sleep(120) 
+                        contador_rafaga = 0
+                        print("▶️ [REANUDANDO] Continuando con los siguientes videos...")
+            
+            print(f"🏁 Todos los archivos de {nombre_txt} han sido copiados.")
             GRUPOS_EN_HISTORICO.discard(chat.id) 
 
         except Exception as e:
@@ -343,7 +317,7 @@ async def aspiradora_historica():
             continue
 
     await enviar_respaldo()
-    print("🏁 [MOTOR HISTÓRICO] Revisión cronológica terminada. Bot en modo Radar 24/7.")
+    print("🏁 [MOTOR HISTÓRICO] Revisión terminada. Bot en modo Radar 24/7.")
 
 # ==========================================
 # MÓDULO WEB MÍNIMO (Para que Render no apague el bot)
@@ -376,17 +350,10 @@ async def main():
     loop.set_exception_handler(silenciar_errores_molestos)
 
     await iniciar_web() 
-    print("🚀 Encendiendo el Sistema Cronológico Obrero...")
+    print("🚀 Encendiendo el Sistema Clásico Obrero...")
     
     await app.start()
     
-    # PEQUEÑO CALENTADOR DE MEMORIA POR SI ACASO
-    try:
-        async for dialog in app.get_dialogs(limit=20):
-            pass
-    except Exception:
-        pass
-
     await descargar_respaldo()
     await iniciar_db()
     
