@@ -44,7 +44,7 @@ except Exception as e:
     sys.exit(1)
 
 # 🔥 CEREBRO TOTALMENTE NUEVO Y EN BLANCO 🔥
-DB_NAME = "memoria_definitiva_16.db"
+DB_NAME = "memoria_final_23.db"
 
 # 🔥 BLINDAJE DE SESIÓN CONTRA RENDER 🔥
 if SESSION_STRING:
@@ -77,9 +77,9 @@ async def enviar_respaldo():
         await app.send_document(
             chat_id=BACKUP_CHAT_ID,
             document=DB_NAME,
-            caption="🛡️ Respaldo Automático de la Memoria (Filtro Matemático)"
+            caption="🛡️ Respaldo Automático de la Memoria (Filtro por ID)"
         )
-        print("☁️ [BACKUP] Memoria guardada en Telegram con éxito.")
+        print("☁️ [BACKUP] Memoria .db guardada en Telegram con éxito.")
     except Exception as e:
         if "Peer id invalid" in str(e):
             alt_id = str(BACKUP_CHAT_ID)
@@ -129,23 +129,13 @@ async def guardar_progreso(chat_id, mensaje_id):
         await db.commit()
 
 # ==========================================
-# 3. EL FILTRO DE HUELLA DIGITAL (MATEMÁTICO SUPREMO)
+# 3. EL FILTRO DE HUELLA DIGITAL (SOLO ID ÚNICO)
 # ==========================================
 def generar_huella(mensaje):
-    """Filtro matemático estricto: Peso + Ancho + Alto + Duración"""
+    """Filtro ultra-rápido: Solo usa el ID único del archivo (file_unique_id)"""
     media = mensaje.photo or mensaje.video
     if not media: return None
-    
-    peso = getattr(media, 'file_size', 0) or 0
-    ancho = getattr(media, 'width', 0) or 0
-    alto = getattr(media, 'height', 0) or 0
-    duracion = getattr(media, 'duration', 0) or 0
-    
-    # Si todo falla (videos viejos rotos donde Telegram manda ceros), usa el file_unique_id
-    if peso == 0 and ancho == 0 and alto == 0 and duracion == 0:
-        return getattr(media, "file_unique_id", None)
-        
-    return f"{peso}_{ancho}_{alto}_{duracion}"
+    return getattr(media, "file_unique_id", None)
 
 async def es_duplicado(huella):
     async with aiosqlite.connect(DB_NAME, timeout=15) as db:
@@ -159,21 +149,21 @@ async def registrar_huella(huella):
         await db.commit()
 
 # ==========================================
-# 4. EL MOTOR DE REENVÍO (SOLO FOTOS Y VIDEOS)
+# 4. EL MOTOR DE REENVÍO
 # ==========================================
 async def procesar_y_enviar(mensaje):
     huella = generar_huella(mensaje)
-    if not huella: return False
+    if not huella: return 0  
     
     if await es_duplicado(huella):
         if getattr(mensaje, "media_group_id", None):
             albumes_procesados.add(mensaje.media_group_id) 
         print(f"⚠️ [FILTRO] Duplicado ignorado (ID: {mensaje.id}).")
-        return False
+        return 0
 
     if getattr(mensaje, "media_group_id", None):
         if mensaje.media_group_id in albumes_procesados:
-            return False
+            return 0
         albumes_procesados.add(mensaje.media_group_id)
         
         try:
@@ -184,7 +174,6 @@ async def procesar_y_enviar(mensaje):
                 h = generar_huella(msg)
                 if h: huellas_grupo.append(h)
                 
-                # SOLO FOTOS Y VIDEOS EN ÁLBUMES (Ignora todo lo demás)
                 if msg.photo:
                     media_limpia.append(InputMediaPhoto(msg.photo.file_id, caption=""))
                 elif msg.video:
@@ -193,15 +182,16 @@ async def procesar_y_enviar(mensaje):
             if media_limpia:
                 await app.send_media_group(TARGET_CHAT_ID, media=media_limpia)
                 for h in huellas_grupo: await registrar_huella(h)
-                print(f"📦 [ENVIADO] ÁLBUM copiado (Último ID: {mensaje.id}).")
+                cantidad_archivos = len(media_limpia)
+                print(f"📦 [ENVIADO] ÁLBUM de {cantidad_archivos} archivos copiado (Último ID: {mensaje.id}).")
                 await asyncio.sleep(4) 
-                return True
+                return cantidad_archivos
         except FloodWait as e:
             print(f"🚨 Telegram pide descansar {e.value}s (Álbum). Reintentando...")
             await asyncio.sleep(e.value + 1)
         except Exception as e:
-            print(f"❌ [ERROR ÁLBUM] No se pudo enviar el ID {mensaje.id}. Se ignora y continúa. Causa: {e}")
-        return False
+            print(f"❌ [ERROR ÁLBUM] No se pudo enviar el ID {mensaje.id}. Causa: {e}")
+        return 0
 
     while True:
         try:
@@ -209,13 +199,13 @@ async def procesar_y_enviar(mensaje):
             await registrar_huella(huella)
             print(f"🚀 [ENVIADO] INDIVIDUAL copiado | ID: {mensaje.id}")
             await asyncio.sleep(2) 
-            return True
+            return 1 
         except FloodWait as e:
             print(f"🚨 Telegram pide descansar {e.value}s (Individual). Reintentando...")
             await asyncio.sleep(e.value + 1)
         except Exception as e:
-            print(f"❌ [ERROR INDIVIDUAL] No se pudo enviar el ID {mensaje.id}. Se ignora y continúa. Causa: {e}")
-            return False
+            print(f"❌ [ERROR INDIVIDUAL] No se pudo enviar el ID {mensaje.id}. Causa: {e}")
+            return 0
 
 # ==========================================
 # 5. EL RADAR EN VIVO (24/7)
@@ -233,7 +223,7 @@ async def radar_en_vivo(client, mensaje):
     await procesar_y_enviar(mensaje)
 
 # ==========================================
-# 6. EL MOTOR HISTÓRICO (RESTAURADO)
+# 6. EL MOTOR HISTÓRICO 
 # ==========================================
 def leer_grupos_txt():
     if not os.path.exists("grupos.txt"): 
@@ -262,7 +252,7 @@ async def aspiradora_historica():
             chat = await app.get_chat(enlace)
             
             CHATS_MONITOREADOS.add(chat.id)
-            GRUPOS_EN_HISTORICO.add(chat.id) # ACTIVA EL MODO HISTÓRICO PARA ESTE GRUPO
+            GRUPOS_EN_HISTORICO.add(chat.id) 
             
             print(f"\n" + "="*50)
             print(f"📊 PRE-ESCANEO DE GRUPO: {nombre_txt}")
@@ -270,45 +260,31 @@ async def aspiradora_historica():
             
             ultimo_id = await obtener_progreso(chat.id)
             mensajes_pendientes = []
-            offset_mensaje_id = 0
             
             if ultimo_id > 0:
                 print(f"🔍 Buscando archivos nuevos por encima del mensaje #{ultimo_id}...")
             else:
                 print(f"🔍 Grupo nuevo detectado. Escaneando historial completo desde cero...")
 
-            while True:
-                bloque = []
-                try:
-                    async for m in app.get_chat_history(chat.id, offset_id=offset_mensaje_id, limit=100):
-                        bloque.append(m)
-                except FloodWait as e:
-                    print(f"🚨 [ALERTA DE LECTURA] Telegram pide pausa de {e.value}s...")
-                    await asyncio.sleep(e.value + 1)
-                    continue
-
-                if not bloque: break
-
-                alcanzo_limite = False
-                for m in bloque:
+            print("⏳ Extrayendo TODO el historial de Telegram sin saltar nada...")
+            
+            try:
+                async for m in app.get_chat_history(chat.id):
                     if m.id <= ultimo_id:
-                        alcanzo_limite = True
                         break
                     
-                    # FILTRO MAESTRO: Solo pasa fotos y videos a la lista de pendientes
                     if m.photo or m.video:
                         mensajes_pendientes.append(m)
-                    offset_mensaje_id = m.id
-
-                if alcanzo_limite: break
-                await asyncio.sleep(1.5)
+            except FloodWait as e:
+                print(f"🚨 Telegram pide pausa de {e.value}s durante la lectura...")
+                await asyncio.sleep(e.value + 1)
 
             if not mensajes_pendientes:
                 print(f"✅ El grupo {nombre_txt} ya está 100% al día.")
-                GRUPOS_EN_HISTORICO.discard(chat.id) # DESACTIVA EL HISTÓRICO, EMPIEZA EL RADAR 24/7
+                GRUPOS_EN_HISTORICO.discard(chat.id) 
                 continue
                 
-            print(f"📥 Se encontraron {len(mensajes_pendientes)} archivos nuevos.")
+            print(f"📥 Se encontraron {len(mensajes_pendientes)} archivos multimedia.")
             
             if len(mensajes_pendientes) > 500:
                 print("⏳ Se leyó un historial masivo. Pausando 15 segundos para proteger la RAM...")
@@ -320,30 +296,32 @@ async def aspiradora_historica():
                 primer_msg = mensajes_pendientes[0]
                 link = f"https://t.me/c/{str(chat.id).replace('-100', '')}/{primer_msg.id}"
                 print("\n" + "🔥"*25)
-                print(f"👁️ RASTREADOR: EL BOT DETECTÓ ESTE VIDEO COMO EL PRIMERO:")
+                print(f"👁️ RASTREADOR: EL BOT DETECTÓ ESTE VIDEO COMO EL PRIMERO (ID: {primer_msg.id}):")
                 print(f"👉 Dale clic para verlo: {link}")
                 print("🔥"*25 + "\n")
 
             contador_rafaga = 0
             
             for mensaje in mensajes_pendientes:
-                fue_enviado = await procesar_y_enviar(mensaje)
+                archivos_enviados = await procesar_y_enviar(mensaje)
                 
-                if fue_enviado or await es_duplicado(generar_huella(mensaje)):
+                if archivos_enviados > 0 or await es_duplicado(generar_huella(mensaje)):
                     await guardar_progreso(chat.id, mensaje.id)
                 
-                # LA MATEMÁTICA EXACTA: Cuenta 1 por cada mensaje que cruza
-                if fue_enviado:
-                    contador_rafaga += 1
+                if archivos_enviados > 0:
+                    contador_rafaga += archivos_enviados
+                    
+                    # EL PUTO DESCANSO GARANTIZADO CON ENVÍO DE .DB
                     if contador_rafaga >= 50:
-                        print("⏸️ [DESCANSO DE SEGURIDAD] 50 envíos procesados. Guardando DB y pausando 2 minutos...")
-                        await enviar_respaldo() 
+                        print(f"⏸️ Límite de {contador_rafaga} archivos alcanzado. Tirando el .db al grupo...")
+                        await enviar_respaldo() # DISPARA LA BASE DE DATOS EN EL ACTO
+                        print("💤 Archivo enviado. Durmiendo 120 segundos sin joder a Telegram...")
                         await asyncio.sleep(120) 
                         contador_rafaga = 0
-                        print("▶️ [REANUDANDO] Continuando...")
+                        print("▶️ [REANUDANDO] Continuando con los siguientes videos...")
             
             print(f"🏁 Todos los archivos de {nombre_txt} han sido copiados.")
-            GRUPOS_EN_HISTORICO.discard(chat.id) # TERMINÓ EL PASADO. EL RADAR SE ACTIVA AQUÍ.
+            GRUPOS_EN_HISTORICO.discard(chat.id) 
 
         except Exception as e:
             if "Peer id invalid" not in str(e):
