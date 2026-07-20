@@ -42,8 +42,8 @@ except Exception as e:
     print(f"❌ [ERROR DE CONFIGURACIÓN]: {e}")
     sys.exit(1)
 
-# 🔥 NUEVA MEMORIA PARA QUE NO SE CRUCE DE BRAZOS 🔥
-DB_NAME = "memoria_limpia_28.db"
+# 🔥 MEMORIA ETERNA (El nombre ya no cambiará) 🔥
+DB_NAME = "memoria_eterna.db"
 
 if SESSION_STRING:
     app = Client("mi_radar_2026", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING, sleep_threshold=120)
@@ -57,7 +57,35 @@ CHATS_MONITOREADOS = set()
 GRUPOS_EN_HISTORICO = set()
 
 # ==========================================
-# 2. BASE DE DATOS Y RESPALDOS
+# 2. EL DESPERTADOR (ANTI-FANTASMAS Y ANTI CEGUERA)
+# ==========================================
+async def despertar_ojos():
+    print("🧠 Abriendo los ojos del bot para evitar la ceguera de Telegram...")
+    targets = {TARGET_CHAT_ID, BACKUP_CHAT_ID}
+    encontrados = set()
+    
+    try:
+        await app.get_chat(TARGET_CHAT_ID)
+        encontrados.add(TARGET_CHAT_ID)
+    except: pass
+    
+    try:
+        await app.get_chat(BACKUP_CHAT_ID)
+        encontrados.add(BACKUP_CHAT_ID)
+    except: pass
+
+    if len(encontrados) < 2:
+        print("⚠️ Telegram está ciego con los IDs. Forzando escaneo profundo (tomará unos segundos)...")
+        async for dialog in app.get_dialogs():
+            if dialog.chat.id in targets:
+                encontrados.add(dialog.chat.id)
+            if len(encontrados) == 2:
+                break
+                
+    print("👁️ Ojos 100% operativos. Destino y Respaldo reconocidos perfectamente.")
+
+# ==========================================
+# 3. BASE DE DATOS Y RESPALDOS 
 # ==========================================
 async def iniciar_db():
     async with aiosqlite.connect(DB_NAME, timeout=15) as db:
@@ -71,22 +99,23 @@ async def enviar_respaldo():
     if not BACKUP_CHAT_ID: return
     try:
         await asyncio.sleep(2)
-        await app.send_document(chat_id=BACKUP_CHAT_ID, document=DB_NAME, caption="🛡️ Respaldo de Memoria")
-        print("☁️ [BACKUP] Memoria guardada con éxito.")
-    except Exception:
-        pass
+        await app.send_document(chat_id=BACKUP_CHAT_ID, document=DB_NAME, caption="🛡️ Respaldo de Memoria (Anti-Render)")
+        print("☁️ [BACKUP] Memoria guardada con éxito en tu chat.")
+    except Exception as e:
+        print(f"❌ [ALERTA FATAL] Falló el guardado del .db en la nube: {e}")
 
 async def descargar_respaldo():
-    print("🔄 Buscando respaldo en la nube...")
+    print("🔄 Buscando tu archivo .db en el chat de respaldo...")
     try:
-        async for mensaje in app.get_chat_history(BACKUP_CHAT_ID, limit=20):
-            if mensaje.document and mensaje.document.file_name == DB_NAME:
+        async for mensaje in app.get_chat_history(BACKUP_CHAT_ID, limit=50):
+            if mensaje.document and mensaje.document.file_name.endswith(".db"):
+                print(f"📥 ¡TE ENCONTRÉ, MEMORIA!: {mensaje.document.file_name}")
                 await app.download_media(mensaje.document, file_name=DB_NAME)
-                print("✅ Memoria restaurada con éxito.")
+                print("✅ Memoria inyectada. Retomando exactamente donde se quedó.")
                 return
-        print("⚠️ No hay respaldo previo. Memoria limpia.")
-    except Exception:
-        pass
+        print("⚠️ No hay archivo .db en los últimos 50 mensajes de respaldo. Arrancando de cero.")
+    except Exception as e:
+        print(f"❌ [CRÍTICO] Error al intentar leer el chat de respaldo: {e}")
 
 async def obtener_progreso(chat_id):
     async with aiosqlite.connect(DB_NAME, timeout=15) as db:
@@ -116,7 +145,7 @@ async def registrar_huella(huella):
         await db.commit()
 
 # ==========================================
-# 3. MOTOR DE ENVÍO CON BLINDAJE ANTI-FANTASMAS
+# 4. MOTOR DE ENVÍO CON BLINDAJE ANTI-FANTASMAS
 # ==========================================
 async def procesar_y_enviar(mensaje):
     huella = generar_huella(mensaje)
@@ -154,7 +183,6 @@ async def procesar_y_enviar(mensaje):
             await asyncio.sleep(e.value + 1)
         except Exception as e:
             if "Peer id invalid" in str(e) or "CHAT_ID_INVALID" in str(e):
-                print(f"⚠️ Álbum rebelde (ID {mensaje.id}). Forzando reenvío nativo...")
                 try:
                     msg_ids = [m.id for m in grupo_completo]
                     await app.forward_messages(TARGET_CHAT_ID, mensaje.chat.id, msg_ids)
@@ -180,7 +208,6 @@ async def procesar_y_enviar(mensaje):
             await asyncio.sleep(e.value + 1)
         except Exception as e:
             if "Peer id invalid" in str(e) or "CHAT_ID_INVALID" in str(e):
-                print(f"⚠️ Archivo rebelde (ID {mensaje.id}). Forzando reenvío nativo...")
                 try:
                     await app.forward_messages(TARGET_CHAT_ID, mensaje.chat.id, mensaje.id)
                     await registrar_huella(huella)
@@ -195,7 +222,7 @@ async def procesar_y_enviar(mensaje):
                 return 0
 
 # ==========================================
-# 4. EXCAVADORA HISTÓRICA CLÁSICA
+# 5. EXCAVADORA HISTÓRICA CLÁSICA
 # ==========================================
 def leer_grupos_txt():
     if not os.path.exists("grupos.txt"): 
@@ -227,7 +254,7 @@ async def aspiradora_historica():
             mensajes_pendientes = []
             
             print(f"\n📊 ESCANEANDO: {nombre_txt}")
-            if ultimo_id > 0: print(f"🔍 Retomando desde el ID: #{ultimo_id}")
+            if ultimo_id > 0: print(f"🔍 Retomando sin repetir desde el ID: #{ultimo_id}")
             else: print(f"🔍 Grupo nuevo. Extrayendo historial...")
 
             try:
@@ -239,15 +266,14 @@ async def aspiradora_historica():
                 continue
 
             if not mensajes_pendientes:
-                print(f"✅ El grupo {nombre_txt} ya está al día.")
+                print(f"✅ El grupo {nombre_txt} ya está al día. No hay nada nuevo.")
                 GRUPOS_EN_HISTORICO.discard(chat.id) 
                 continue
                 
-            print(f"📥 Se extrajeron {len(mensajes_pendientes)} archivos multimedia.")
+            print(f"📥 Se extrajeron {len(mensajes_pendientes)} archivos multimedia pendientes.")
             if len(mensajes_pendientes) > 500: await asyncio.sleep(10)
 
             mensajes_pendientes.reverse()
-            print(f"🔥 INICIANDO ENVÍO DESDE EL ID: {mensajes_pendientes[0].id} 🔥")
 
             contador_rafaga = 0
             for mensaje in mensajes_pendientes:
@@ -258,13 +284,14 @@ async def aspiradora_historica():
                 
                 if archivos_enviados > 0:
                     contador_rafaga += archivos_enviados
-                    if contador_rafaga >= 50:
-                        print(f"⏸️ 50 archivos enviados. Guardando .db y durmiendo 120s...")
+                    # 🔥 GUARDA LA MEMORIA CADA 25 ARCHIVOS 🔥
+                    if contador_rafaga >= 25:
+                        print(f"⏸️ 25 archivos alcanzados. Guardando el .db por si Render se apaga...")
                         await enviar_respaldo()
-                        await asyncio.sleep(120) 
+                        await asyncio.sleep(60) # Pausa de 60s
                         contador_rafaga = 0
             
-            print(f"🏁 Grupo {nombre_txt} completado.")
+            print(f"🏁 Grupo {nombre_txt} completado al 100%.")
             GRUPOS_EN_HISTORICO.discard(chat.id) 
 
         except Exception as e:
@@ -281,7 +308,7 @@ async def radar_en_vivo(client, mensaje):
     await procesar_y_enviar(mensaje)
 
 # ==========================================
-# 5. MÓDULO WEB & ARRANQUE
+# 6. MÓDULO WEB & ARRANQUE
 # ==========================================
 async def handle(request): return web.Response(text="Bot vivo.")
 
@@ -306,11 +333,8 @@ async def main():
     await iniciar_web() 
     await app.start()
 
-    print("🧠 Calentando memoria para evitar grupos invisibles...")
-    try:
-        async for dialog in app.get_dialogs(limit=50): pass
-        print("🧠 Memoria cargada al 100%.")
-    except Exception: pass
+    # 🔥 AQUI SE ABREN LOS OJOS DEL BOT ANTES DE LEER LA MEMORIA 🔥
+    await despertar_ojos()
 
     await descargar_respaldo()
     await iniciar_db()
