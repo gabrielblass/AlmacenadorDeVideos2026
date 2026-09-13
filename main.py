@@ -1,5 +1,4 @@
 import os
-# 🔥 ESTO OBLIGA A RENDER A ESCUPIR LOS TEXTOS EN VIVO 🔥
 os.environ["PYTHONUNBUFFERED"] = "1"
 
 import asyncio
@@ -20,26 +19,22 @@ from aiohttp import web
 logging.getLogger("pyrogram").setLevel(logging.ERROR)
 
 # ==========================================
-# 1. CONFIGURACIÓN INICIAL
+# 1. CONFIGURACIÓN INICIAL Y DATOS CLAVADOS
 # ==========================================
 load_dotenv()
 
 try:
     API_ID = int(os.environ.get("API_ID", 0))
     API_HASH = os.environ.get("API_HASH", "").strip()
-    
-    # 🔥 DESTINO FORZADO 🔥
-    TARGET_CHAT_ID = 5200605685 
-    
-    RAW_BACKUP = os.environ.get("BACKUP_CHAT_ID", "").strip().replace('"', '').replace("'", "")
     SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
+    
+    # 🔥 LOS IDS FIJOS Y DUROS PARA NO FALLAR 🔥
+    TARGET_CHAT_ID = 5200605685 
+    BACKUP_CHAT_ID = -1003179132816 # Tu canal "Gran"
     
     if not API_ID or not API_HASH:
         raise ValueError("Faltan API_ID o API_HASH.")
-    if not RAW_BACKUP:
-        raise ValueError("Falta BACKUP_CHAT_ID en Render.")
         
-    BACKUP_CHAT_ID = int(RAW_BACKUP)
 except Exception as e:
     print(f"❌ [ERROR DE CONFIGURACIÓN]: {e}")
     sys.exit(1)
@@ -64,26 +59,39 @@ else:
 albumes_procesados = set()
 
 # ==========================================
-# 2. VERIFICACIÓN DIRECTA (SIN ESCANEAR OTROS GRUPOS)
+# 2. ESCÁNER PROFUNDO (LA CURA A LA AMNESIA)
 # ==========================================
 async def despertar_ojos():
-    print("🧠 Verificando conexiones objetivo (Ignorando grupos fantasma)...")
+    print("🧠 Escaneando tus chats para recuperar la memoria de los IDs (Tomará unos segundos)...")
+    
+    # Este bucle obliga a Pyrogram a guardar todos tus grupos en su memoria caché
+    try:
+        async for dialog in app.get_dialogs(limit=200):
+            pass
+    except Exception as e:
+        print(f"⚠️ Aviso en el escáner: {e}")
+
+    print("✅ Memoria restaurada. Verificando objetivos...")
+    
     try:
         await app.get_chat(TARGET_CHAT_ID)
-        print(f"👁️ Destino verificado.")
-    except Exception as e: pass
+        print(f"👁️ Destino verificado: {TARGET_CHAT_ID}")
+    except Exception as e: 
+        print(f"⚠️ Falló el destino: {e}")
         
     try:
         await app.get_chat(BACKUP_CHAT_ID)
-        print(f"👁️ Respaldo verificado.")
-    except Exception as e: pass
+        print(f"👁️ Respaldo verificado (Canal Gran): {BACKUP_CHAT_ID}")
+    except Exception as e: 
+        print(f"⚠️ Falló el respaldo: {e}")
 
     try:
         await app.get_chat(GRUPO_OBJETIVO)
-        print(f"👁️ Origen verificado.")
-    except Exception as e: pass
+        print(f"👁️ Origen verificado: {GRUPO_OBJETIVO}")
+    except Exception as e: 
+        print(f"⚠️ Falló el origen: {e}")
                 
-    print("👁️ Ojos operativos al 100%. Procediendo a extraer videos...")
+    print("👁️ Procediendo a extraer videos...")
 
 # ==========================================
 # 3. BASE DE DATOS Y RESPALDOS 
@@ -92,21 +100,18 @@ async def iniciar_db():
     async with aiosqlite.connect(DB_NAME, timeout=15) as db:
         await db.execute('''CREATE TABLE IF NOT EXISTS archivos_enviados 
                             (huella TEXT PRIMARY KEY)''')
-        await db.execute('''CREATE TABLE IF NOT EXISTS progreso_grupos 
-                            (chat_id TEXT PRIMARY KEY, ultimo_mensaje_id INTEGER)''')
         await db.commit()
 
 async def enviar_respaldo():
-    if not BACKUP_CHAT_ID: return
     try:
         await asyncio.sleep(2)
         await app.send_document(chat_id=BACKUP_CHAT_ID, document=DB_NAME, caption=f"🛡️ Respaldo Rango {ID_INICIO}-{ID_FIN}")
-        print("☁️ [BACKUP] Memoria guardada con éxito en tu chat.")
+        print("☁️ [BACKUP] Memoria guardada con éxito en el canal Gran.")
     except Exception as e:
-        pass
+        print(f"⚠️ Error al guardar backup: {e}")
 
 async def descargar_respaldo():
-    print("🔄 Buscando tu archivo .db en el chat de respaldo...")
+    print("🔄 Buscando tu archivo .db en el canal Gran...")
     try:
         async for mensaje in app.get_chat_history(BACKUP_CHAT_ID, limit=50):
             if mensaje.document and mensaje.document.file_name.endswith(".db"):
