@@ -29,7 +29,7 @@ try:
     SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
     
     # IDs numéricos oficiales con su -100
-    TARGET_CHAT_ID = -1005200605685  # Grupo "Videos Virales"
+    TARGET_CHAT_ID = -5200605685  # Grupo "Videos Virales"
     BACKUP_CHAT_ID = -1003179132816  # Canal "Gran"
     
     if not API_ID or not API_HASH:
