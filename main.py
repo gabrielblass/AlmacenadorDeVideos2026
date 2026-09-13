@@ -28,9 +28,9 @@ try:
     API_HASH = os.environ.get("API_HASH", "").strip()
     SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
     
-    # 🔥 USAMOS EL ENLACE DE INVITACIÓN DIRECTO DE TU CAPTURA 🔥
-    TARGET_CHAT_ID = "https://t.me/+BJgXG4vKy8EWn2Mx"  # Grupo "Videos Virales"
-    BACKUP_CHAT_ID = -1003179132816  # Canal "Gran" (Respaldo .db)
+    # IDs numéricos oficiales con su -100
+    TARGET_CHAT_ID = -1005200605685  # Grupo "Videos Virales"
+    BACKUP_CHAT_ID = -1003179132816  # Canal "Gran"
     
     if not API_ID or not API_HASH:
         raise ValueError("Faltan API_ID o API_HASH.")
@@ -39,13 +39,12 @@ except Exception as e:
     print(f"❌ [ERROR DE CONFIGURACIÓN]: {e}")
     sys.exit(1)
 
-# 🔥 ======================================== 🔥
-# 🔥 MODO RANGOS (FRANCOTIRADOR)              🔥
-# 🔥 ======================================== 🔥
+# ==========================================
+# MODO RANGOS (FRANCOTIRADOR)
+# ==========================================
 GRUPO_OBJETIVO = "doeujj"
 ID_INICIO = 13420
 ID_FIN = 22707
-# 🔥 ======================================== 🔥
 
 DB_NAME = "memoria_eterna.db"
 
@@ -59,14 +58,21 @@ else:
 albumes_procesados = set()
 
 # ==========================================
-# 2. VERIFICACIÓN DIRECTA
+# 2. ESCÁNER PROFUNDO DE CACHÉ
 # ==========================================
 async def despertar_ojos():
-    print("🧠 Verificando objetivos...")
+    print("🧠 Escaneando chats recientes para registrar IDs en la sesión...")
+    try:
+        async for dialog in app.get_dialogs(limit=300):
+            pass
+    except Exception as e:
+        print(f"⚠️ Aviso en el escáner: {e}")
+
+    print("✅ Memoria restaurada. Verificando objetivos...")
     
     try:
-        chat_destino = await app.get_chat(TARGET_CHAT_ID)
-        print(f"👁️ Destino verificado: {chat_destino.title} (ID: {chat_destino.id})")
+        await app.get_chat(TARGET_CHAT_ID)
+        print(f"👁️ Destino verificado (Videos Virales).")
     except Exception as e: 
         print(f"⚠️ Falló el destino: {e}")
         
