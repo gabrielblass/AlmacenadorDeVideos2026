@@ -19,7 +19,7 @@ from aiohttp import web
 logging.getLogger("pyrogram").setLevel(logging.ERROR)
 
 # ==========================================
-# 1. CONFIGURACIÓN INICIAL (IDS CORREGIDOS)
+# 1. CONFIGURACIÓN INICIAL
 # ==========================================
 load_dotenv()
 
@@ -28,8 +28,8 @@ try:
     API_HASH = os.environ.get("API_HASH", "").strip()
     SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
     
-    # 🔥 IDS EXACTOS CON SU -100 SACADOS DE TUS CAPTURAS 🔥
-    TARGET_CHAT_ID = -1005200605685  # Grupo "Videos Virales"
+    # 🔥 USAMOS EL ENLACE DE INVITACIÓN DIRECTO DE TU CAPTURA 🔥
+    TARGET_CHAT_ID = "https://t.me/+BJgXG4vKy8EWn2Mx"  # Grupo "Videos Virales"
     BACKUP_CHAT_ID = -1003179132816  # Canal "Gran" (Respaldo .db)
     
     if not API_ID or not API_HASH:
@@ -59,28 +59,20 @@ else:
 albumes_procesados = set()
 
 # ==========================================
-# 2. ESCÁNER PROFUNDO (CURA A LA AMNESIA)
+# 2. VERIFICACIÓN DIRECTA
 # ==========================================
 async def despertar_ojos():
-    print("🧠 Escaneando tus chats para registrar los IDs en la sesión...")
+    print("🧠 Verificando objetivos...")
     
     try:
-        async for dialog in app.get_dialogs(limit=250):
-            pass
-    except Exception as e:
-        print(f"⚠️ Aviso en el escáner: {e}")
-
-    print("✅ Memoria restaurada. Verificando objetivos...")
-    
-    try:
-        await app.get_chat(TARGET_CHAT_ID)
-        print(f"👁️ Destino verificado (Videos Virales): {TARGET_CHAT_ID}")
+        chat_destino = await app.get_chat(TARGET_CHAT_ID)
+        print(f"👁️ Destino verificado: {chat_destino.title} (ID: {chat_destino.id})")
     except Exception as e: 
         print(f"⚠️ Falló el destino: {e}")
         
     try:
         await app.get_chat(BACKUP_CHAT_ID)
-        print(f"👁️ Respaldo verificado (Canal Gran): {BACKUP_CHAT_ID}")
+        print(f"👁️ Respaldo verificado (Canal Gran).")
     except Exception as e: 
         print(f"⚠️ Falló el respaldo: {e}")
 
