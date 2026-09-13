@@ -24,19 +24,19 @@ load_dotenv()
 try:
     API_ID = int(os.environ.get("API_ID", 0))
     API_HASH = os.environ.get("API_HASH", "").strip()
-    RAW_TARGET = os.environ.get("TARGET_CHAT_ID", "").strip().replace('"', '').replace("'", "")
+    
+    # 🔥 DESTINO FORZADO DIRECTAMENTE EN EL CÓDIGO 🔥
+    TARGET_CHAT_ID = 5200605685 
+    
     RAW_BACKUP = os.environ.get("BACKUP_CHAT_ID", "").strip().replace('"', '').replace("'", "")
         
     SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
     
     if not API_ID or not API_HASH:
         raise ValueError("Faltan API_ID o API_HASH.")
-    if not RAW_TARGET:
-        raise ValueError("Falta TARGET_CHAT_ID.")
     if not RAW_BACKUP:
-        raise ValueError("Falta BACKUP_CHAT_ID.")
+        raise ValueError("Falta BACKUP_CHAT_ID en Render.")
         
-    TARGET_CHAT_ID = int(RAW_TARGET)
     BACKUP_CHAT_ID = int(RAW_BACKUP)
 except Exception as e:
     print(f"❌ [ERROR DE CONFIGURACIÓN]: {e}")
@@ -45,11 +45,9 @@ except Exception as e:
 # 🔥 ======================================== 🔥
 # 🔥 MODO RANGOS (FRANCOTIRADOR)              🔥
 # 🔥 ======================================== 🔥
-GRUPO_OBJETIVO = -1003851115425  
-
-# ⚠️ CAMBIA ESTOS DOS NÚMEROS ANTES DE SUBIR EL CÓDIGO A GITHUB ⚠️
-ID_INICIO = 1000  # <--- Número del PRIMER video que quieres sacar
-ID_FIN = 2000     # <--- Número del ÚLTIMO video que quieres sacar
+GRUPO_OBJETIVO = "doeujj"
+ID_INICIO = 13420
+ID_FIN = 22707
 # 🔥 ======================================== 🔥
 
 DB_NAME = "memoria_eterna.db"
@@ -62,30 +60,34 @@ else:
     print("⚠️ Iniciando con sesión local.")
 
 albumes_procesados = set()
+CHATS_MONITOREADOS = set()
+GRUPOS_EN_HISTORICO = set()
 
 # ==========================================
-# 2. EL DESPERTADOR (ANTI-FANTASMAS Y ANTI CEGUERA)
+# 2. EL DESPERTADOR (ANTI-FANTASMAS)
 # ==========================================
 async def despertar_ojos():
     print("🧠 Abriendo los ojos del bot para evitar la ceguera de Telegram...")
-    targets = {TARGET_CHAT_ID, BACKUP_CHAT_ID, GRUPO_OBJETIVO}
-    encontrados = set()
     
-    for t in targets:
-        try:
-            await app.get_chat(t)
-            encontrados.add(t)
-        except: pass
+    try:
+        await app.get_chat(TARGET_CHAT_ID)
+        print(f"👁️ Destino verificado: {TARGET_CHAT_ID}")
+    except Exception as e:
+        print(f"⚠️ Aviso Destino: {e}")
+        
+    try:
+        await app.get_chat(BACKUP_CHAT_ID)
+        print(f"👁️ Respaldo verificado: {BACKUP_CHAT_ID}")
+    except Exception as e:
+        print(f"⚠️ Aviso Respaldo: {e}")
 
-    if len(encontrados) < len(targets):
-        print("⚠️ Forzando escaneo profundo (tomará unos segundos)...")
-        async for dialog in app.get_dialogs():
-            if dialog.chat.id in targets:
-                encontrados.add(dialog.chat.id)
-            if len(encontrados) == len(targets):
-                break
+    try:
+        await app.get_chat(GRUPO_OBJETIVO)
+        print(f"👁️ Origen verificado: {GRUPO_OBJETIVO}")
+    except Exception as e:
+        print(f"⚠️ Aviso Origen: {e}")
                 
-    print("👁️ Ojos 100% operativos. Origen, Destino y Respaldo reconocidos.")
+    print("👁️ Ojos operativos al 100%. Procediendo...")
 
 # ==========================================
 # 3. BASE DE DATOS Y RESPALDOS 
@@ -94,6 +96,8 @@ async def iniciar_db():
     async with aiosqlite.connect(DB_NAME, timeout=15) as db:
         await db.execute('''CREATE TABLE IF NOT EXISTS archivos_enviados 
                             (huella TEXT PRIMARY KEY)''')
+        await db.execute('''CREATE TABLE IF NOT EXISTS progreso_grupos 
+                            (chat_id TEXT PRIMARY KEY, ultimo_mensaje_id INTEGER)''')
         await db.commit()
 
 async def enviar_respaldo():
@@ -112,11 +116,22 @@ async def descargar_respaldo():
             if mensaje.document and mensaje.document.file_name.endswith(".db"):
                 print(f"📥 ¡TE ENCONTRÉ, MEMORIA!: {mensaje.document.file_name}")
                 await app.download_media(mensaje.document, file_name=DB_NAME)
-                print("✅ Memoria inyectada para no enviar duplicados.")
+                print("✅ Memoria inyectada. Retomando exactamente donde se quedó.")
                 return
         print("⚠️ No hay archivo .db en los últimos 50 mensajes de respaldo. Arrancando de cero.")
     except Exception as e:
         print(f"❌ [CRÍTICO] Error al intentar leer el chat de respaldo: {e}")
+
+async def obtener_progreso(chat_id):
+    async with aiosqlite.connect(DB_NAME, timeout=15) as db:
+        cursor = await db.execute("SELECT ultimo_mensaje_id FROM progreso_grupos WHERE chat_id = ?", (str(chat_id),))
+        resultado = await cursor.fetchone()
+        return resultado[0] if resultado else 0
+
+async def guardar_progreso(chat_id, mensaje_id):
+    async with aiosqlite.connect(DB_NAME, timeout=15) as db:
+        await db.execute("INSERT OR REPLACE INTO progreso_grupos (chat_id, ultimo_mensaje_id) VALUES (?, ?)", (str(chat_id), mensaje_id))
+        await db.commit()
 
 def generar_huella(mensaje):
     media = mensaje.photo or mensaje.video
@@ -147,7 +162,8 @@ async def procesar_y_enviar(mensaje):
         return 0
 
     if getattr(mensaje, "media_group_id", None):
-        if mensaje.media_group_id in albumes_procesados: return 0
+        if mensaje.media_group_id in albumes_procesados:
+            return 0
         albumes_procesados.add(mensaje.media_group_id)
         
         try:
@@ -225,7 +241,6 @@ async def aspiradora_rangos():
 
     contador_rafaga = 0
     
-    # Busca los mensajes en bloques de 200 (Límite nativo de Telegram)
     for inicio_bloque in range(ID_INICIO, ID_FIN + 1, 200):
         fin_bloque = min(inicio_bloque + 199, ID_FIN)
         ids_a_buscar = list(range(inicio_bloque, fin_bloque + 1))
@@ -241,7 +256,6 @@ async def aspiradora_rangos():
             continue
 
         for mensaje in bloque_mensajes:
-            # Salta mensajes borrados o vacíos
             if mensaje is None or mensaje.empty:
                 continue
                 
@@ -251,14 +265,13 @@ async def aspiradora_rangos():
                 if archivos_enviados > 0:
                     contador_rafaga += archivos_enviados
                     
-                    # 🔥 GUARDA LA MEMORIA CADA 25 ARCHIVOS 🔥
                     if contador_rafaga >= 25:
                         print(f"⏸️ 25 archivos alcanzados. Guardando el .db por seguridad...")
                         await enviar_respaldo()
-                        await asyncio.sleep(60) # Pausa de 60s
+                        await asyncio.sleep(60) 
                         contador_rafaga = 0
         
-        await asyncio.sleep(2) # Respiro de 2 segundos entre bloques grandes
+        await asyncio.sleep(2) 
     
     await enviar_respaldo()
     print(f"🏁 Rango de {ID_INICIO} a {ID_FIN} completado al 100%. Misión cumplida.")
@@ -289,7 +302,6 @@ async def main():
     await iniciar_web() 
     await app.start()
 
-    # Abrimos los ojos para reconocer origen, destino y respaldo
     await despertar_ojos()
 
     await descargar_respaldo()
@@ -304,4 +316,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
