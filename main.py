@@ -9,7 +9,6 @@ import sys
 import aiosqlite
 import logging
 from pyrogram import Client, filters
-from pyrogram.enums import MessagesFilter
 from pyrogram.types import InputMediaPhoto, InputMediaVideo
 from pyrogram.errors import FloodWait
 from dotenv import load_dotenv
@@ -28,7 +27,6 @@ try:
     API_HASH = os.environ.get("API_HASH", "").strip()
     SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
     
-    # IDs numéricos oficiales con su -100
     TARGET_CHAT_ID = -5200605685  # Grupo "Videos Virales"
     BACKUP_CHAT_ID = -1003179132816  # Canal "Gran"
     
@@ -40,7 +38,7 @@ except Exception as e:
     sys.exit(1)
 
 # ==========================================
-# MODO RANGOS (FRANCOTIRADOR)
+# MODO RANGOS (FRANCOTIRADOR SECUENCIAL)
 # ==========================================
 GRUPO_OBJETIVO = "doeujj"
 ID_INICIO = 13420
@@ -91,13 +89,16 @@ async def despertar_ojos():
     print("👁️ Todo listo. Procediendo a extraer videos...")
 
 # ==========================================
-# 3. BASE DE DATOS Y RESPALDOS 
+# 3. BASE DE DATOS LIMPIA (REINICIO TOTAL)
 # ==========================================
 async def iniciar_db():
     async with aiosqlite.connect(DB_NAME, timeout=15) as db:
-        await db.execute('''CREATE TABLE IF NOT EXISTS archivos_enviados 
+        # Borramos la tabla vieja para que empiece completamente desde cero y no salte nada por duplicado
+        await db.execute("DROP TABLE IF EXISTS archivos_enviados")
+        await db.execute('''CREATE TABLE archivos_enviados 
                             (huella TEXT PRIMARY KEY)''')
         await db.commit()
+    print("🧹 Base de datos blanqueada. Iniciando sin registros previos.")
 
 async def enviar_respaldo():
     try:
@@ -106,19 +107,6 @@ async def enviar_respaldo():
         print("☁️ [BACKUP] Memoria guardada con éxito en el canal Gran.")
     except Exception as e:
         print(f"⚠️ Error al guardar backup: {e}")
-
-async def descargar_respaldo():
-    print("🔄 Buscando tu archivo .db en el canal Gran...")
-    try:
-        async for mensaje in app.get_chat_history(BACKUP_CHAT_ID, limit=50):
-            if mensaje.document and mensaje.document.file_name.endswith(".db"):
-                print(f"📥 ¡TE ENCONTRÉ, MEMORIA!: {mensaje.document.file_name}")
-                await app.download_media(mensaje.document, file_name=DB_NAME)
-                print("✅ Memoria inyectada. Retomando donde se quedó sin duplicar.")
-                return
-        print("⚠️ No hay archivo .db reciente. Arrancando el rango desde cero.")
-    except Exception as e:
-        print(f"⚠️ Aviso al leer respaldo: {e}")
 
 def generar_huella(mensaje):
     media = mensaje.photo or mensaje.video
@@ -166,7 +154,7 @@ async def procesar_y_enviar(mensaje):
             if media_limpia:
                 await app.send_media_group(TARGET_CHAT_ID, media=media_limpia)
                 for h in huellas_grupo: await registrar_huella(h)
-                print(f"📦 [ENVIADO] ÁLBUM copiado (ID: {mensaje.id}).")
+                print(f"📦 [ENVIADO] ÁLBUM copiado (ID real: {mensaje.id}).")
                 await asyncio.sleep(4) 
                 return len(media_limpia)
                 
@@ -179,7 +167,7 @@ async def procesar_y_enviar(mensaje):
                     msg_ids = [m.id for m in grupo_completo]
                     await app.forward_messages(TARGET_CHAT_ID, mensaje.chat.id, msg_ids)
                     for h in huellas_grupo: await registrar_huella(h)
-                    print(f"📦 [REENVIADO FORZOSO] ÁLBUM superó el bloqueo (ID: {mensaje.id}).")
+                    print(f"📦 [REENVIADO FORZOSO] ÁLBUM superó el bloqueo (ID real: {mensaje.id}).")
                     await asyncio.sleep(4)
                     return len(msg_ids)
                 except Exception as e2: pass
@@ -189,7 +177,7 @@ async def procesar_y_enviar(mensaje):
         try:
             await mensaje.copy(chat_id=TARGET_CHAT_ID, caption="")
             await registrar_huella(huella)
-            print(f"🚀 [ENVIADO] INDIVIDUAL copiado | ID: {mensaje.id}")
+            print(f"🚀 [ENVIADO] INDIVIDUAL copiado | ID real: {mensaje.id}")
             await asyncio.sleep(2) 
             return 1 
         except FloodWait as e:
@@ -200,38 +188,32 @@ async def procesar_y_enviar(mensaje):
                 try:
                     await app.forward_messages(TARGET_CHAT_ID, mensaje.chat.id, mensaje.id)
                     await registrar_huella(huella)
-                    print(f"🚀 [REENVIADO FORZOSO] INDIVIDUAL superó el bloqueo | ID: {mensaje.id}")
+                    print(f"🚀 [REENVIADO FORZOSO] INDIVIDUAL superó el bloqueo | ID real: {mensaje.id}")
                     await asyncio.sleep(2)
                     return 1
                 except Exception as e2: return 0
             return 0
 
 # ==========================================
-# 5. EL FRANCOTIRADOR (POR RANGOS)
+# 5. EL FRANCOTIRADOR SECUENCIAL (POR HISTORIAL)
 # ==========================================
 async def aspiradora_rangos():
-    print(f"\n🎯 FRANCOTIRADOR ACTIVADO EN: {GRUPO_OBJETIVO}")
-    print(f"🔍 Extrayendo EXCLUSIVAMENTE del mensaje {ID_INICIO} al {ID_FIN}...")
+    print(f"\n🎯 FRANCOTIRADOR SECUENCIAL ACTIVADO EN: {GRUPO_OBJETIVO}")
+    print(f"🔍 Escaneando historial ordenado desde el mensaje {ID_FIN} hacia el {ID_INICIO}...")
 
     contador_rafaga = 0
     
-    for inicio_bloque in range(ID_INICIO, ID_FIN + 1, 200):
-        fin_bloque = min(inicio_bloque + 199, ID_FIN)
-        ids_a_buscar = list(range(inicio_bloque, fin_bloque + 1))
-        
-        try:
-            bloque_mensajes = await app.get_messages(GRUPO_OBJETIVO, ids_a_buscar)
-        except FloodWait as e:
-            print(f"🚨 Freno de lectura. Pausa de {e.value}s...")
-            await asyncio.sleep(e.value + 1)
-            bloque_mensajes = await app.get_messages(GRUPO_OBJETIVO, ids_a_buscar)
-        except Exception as e:
+    async for mensaje in app.get_chat_history(GRUPO_OBJETIVO):
+        if mensaje is None:
             continue
-
-        for mensaje in bloque_mensajes:
-            if mensaje is None or mensaje.empty:
-                continue
-                
+            
+        # Si bajamos del límite inferior, detenemos la búsqueda
+        if mensaje.id < ID_INICIO:
+            print(f"🏁 Se alcanzó el límite inferior de ID ({ID_INICIO}). Barrido completado.")
+            break
+            
+        # Procesamos estrictamente dentro del rango de IDs reales
+        if ID_INICIO <= mensaje.id <= ID_FIN:
             if mensaje.photo or mensaje.video:
                 archivos_enviados = await procesar_y_enviar(mensaje)
                 
@@ -243,8 +225,8 @@ async def aspiradora_rangos():
                         await enviar_respaldo()
                         await asyncio.sleep(60) 
                         contador_rafaga = 0
-        
-        await asyncio.sleep(2) 
+                        
+        await asyncio.sleep(0.1) # Pequeña pausa para no saturar la API
     
     await enviar_respaldo()
     print(f"🏁 Rango de {ID_INICIO} a {ID_FIN} completado al 100%. Misión cumplida.")
@@ -277,8 +259,7 @@ async def main():
     await app.start()
 
     await despertar_ojos()
-    await descargar_respaldo()
-    await iniciar_db()
+    await iniciar_db()  # Borra la base vieja y empieza completamente limpio
     
     asyncio.create_task(aspiradora_rangos())
     
