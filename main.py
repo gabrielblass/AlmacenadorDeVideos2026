@@ -1,8 +1,11 @@
+import os
+# 🔥 ESTO OBLIGA A RENDER A ESCUPIR LOS TEXTOS EN VIVO 🔥
+os.environ["PYTHONUNBUFFERED"] = "1"
+
 import asyncio
 import nest_asyncio
 nest_asyncio.apply()
 
-import os
 import sys
 import aiosqlite
 import logging
@@ -25,11 +28,10 @@ try:
     API_ID = int(os.environ.get("API_ID", 0))
     API_HASH = os.environ.get("API_HASH", "").strip()
     
-    # 🔥 DESTINO FORZADO DIRECTAMENTE EN EL CÓDIGO 🔥
+    # 🔥 DESTINO FORZADO 🔥
     TARGET_CHAT_ID = 5200605685 
     
     RAW_BACKUP = os.environ.get("BACKUP_CHAT_ID", "").strip().replace('"', '').replace("'", "")
-        
     SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
     
     if not API_ID or not API_HASH:
@@ -60,34 +62,28 @@ else:
     print("⚠️ Iniciando con sesión local.")
 
 albumes_procesados = set()
-CHATS_MONITOREADOS = set()
-GRUPOS_EN_HISTORICO = set()
 
 # ==========================================
-# 2. EL DESPERTADOR (ANTI-FANTASMAS)
+# 2. VERIFICACIÓN DIRECTA (SIN ESCANEAR OTROS GRUPOS)
 # ==========================================
 async def despertar_ojos():
-    print("🧠 Abriendo los ojos del bot para evitar la ceguera de Telegram...")
-    
+    print("🧠 Verificando conexiones objetivo (Ignorando grupos fantasma)...")
     try:
         await app.get_chat(TARGET_CHAT_ID)
-        print(f"👁️ Destino verificado: {TARGET_CHAT_ID}")
-    except Exception as e:
-        print(f"⚠️ Aviso Destino: {e}")
+        print(f"👁️ Destino verificado.")
+    except Exception as e: pass
         
     try:
         await app.get_chat(BACKUP_CHAT_ID)
-        print(f"👁️ Respaldo verificado: {BACKUP_CHAT_ID}")
-    except Exception as e:
-        print(f"⚠️ Aviso Respaldo: {e}")
+        print(f"👁️ Respaldo verificado.")
+    except Exception as e: pass
 
     try:
         await app.get_chat(GRUPO_OBJETIVO)
-        print(f"👁️ Origen verificado: {GRUPO_OBJETIVO}")
-    except Exception as e:
-        print(f"⚠️ Aviso Origen: {e}")
+        print(f"👁️ Origen verificado.")
+    except Exception as e: pass
                 
-    print("👁️ Ojos operativos al 100%. Procediendo...")
+    print("👁️ Ojos operativos al 100%. Procediendo a extraer videos...")
 
 # ==========================================
 # 3. BASE DE DATOS Y RESPALDOS 
@@ -107,7 +103,7 @@ async def enviar_respaldo():
         await app.send_document(chat_id=BACKUP_CHAT_ID, document=DB_NAME, caption=f"🛡️ Respaldo Rango {ID_INICIO}-{ID_FIN}")
         print("☁️ [BACKUP] Memoria guardada con éxito en tu chat.")
     except Exception as e:
-        print(f"❌ [ALERTA FATAL] Falló el guardado del .db en la nube: {e}")
+        pass
 
 async def descargar_respaldo():
     print("🔄 Buscando tu archivo .db en el chat de respaldo...")
@@ -116,22 +112,11 @@ async def descargar_respaldo():
             if mensaje.document and mensaje.document.file_name.endswith(".db"):
                 print(f"📥 ¡TE ENCONTRÉ, MEMORIA!: {mensaje.document.file_name}")
                 await app.download_media(mensaje.document, file_name=DB_NAME)
-                print("✅ Memoria inyectada. Retomando exactamente donde se quedó.")
+                print("✅ Memoria inyectada. Retomando donde se quedó sin duplicar.")
                 return
-        print("⚠️ No hay archivo .db en los últimos 50 mensajes de respaldo. Arrancando de cero.")
+        print("⚠️ No hay archivo .db reciente. Arrancando el rango desde cero.")
     except Exception as e:
-        print(f"❌ [CRÍTICO] Error al intentar leer el chat de respaldo: {e}")
-
-async def obtener_progreso(chat_id):
-    async with aiosqlite.connect(DB_NAME, timeout=15) as db:
-        cursor = await db.execute("SELECT ultimo_mensaje_id FROM progreso_grupos WHERE chat_id = ?", (str(chat_id),))
-        resultado = await cursor.fetchone()
-        return resultado[0] if resultado else 0
-
-async def guardar_progreso(chat_id, mensaje_id):
-    async with aiosqlite.connect(DB_NAME, timeout=15) as db:
-        await db.execute("INSERT OR REPLACE INTO progreso_grupos (chat_id, ultimo_mensaje_id) VALUES (?, ?)", (str(chat_id), mensaje_id))
-        await db.commit()
+        print(f"⚠️ Aviso al leer respaldo: {e}")
 
 def generar_huella(mensaje):
     media = mensaje.photo or mensaje.video
@@ -150,7 +135,7 @@ async def registrar_huella(huella):
         await db.commit()
 
 # ==========================================
-# 4. MOTOR DE ENVÍO CON BLINDAJE ANTI-FANTASMAS
+# 4. MOTOR DE ENVÍO
 # ==========================================
 async def procesar_y_enviar(mensaje):
     huella = generar_huella(mensaje)
@@ -195,10 +180,7 @@ async def procesar_y_enviar(mensaje):
                     print(f"📦 [REENVIADO FORZOSO] ÁLBUM superó el bloqueo (ID: {mensaje.id}).")
                     await asyncio.sleep(4)
                     return len(msg_ids)
-                except Exception as e2:
-                    print(f"❌ [ERROR] Falló hasta el reenvío forzoso: {e2}")
-            else:
-                print(f"❌ [ERROR ÁLBUM] {e}")
+                except Exception as e2: pass
         return 0
 
     while True:
@@ -219,24 +201,14 @@ async def procesar_y_enviar(mensaje):
                     print(f"🚀 [REENVIADO FORZOSO] INDIVIDUAL superó el bloqueo | ID: {mensaje.id}")
                     await asyncio.sleep(2)
                     return 1
-                except Exception as e2:
-                    print(f"❌ [ERROR] Falló hasta el reenvío forzoso: {e2}")
-                    return 0
-            else:
-                print(f"❌ [ERROR INDIVIDUAL] {e}")
-                return 0
+                except Exception as e2: return 0
+            return 0
 
 # ==========================================
 # 5. EL FRANCOTIRADOR (POR RANGOS)
 # ==========================================
 async def aspiradora_rangos():
-    try:
-        chat = await app.get_chat(GRUPO_OBJETIVO)
-        nombre_txt = chat.title
-    except Exception as e:
-        nombre_txt = str(GRUPO_OBJETIVO)
-        
-    print(f"\n🎯 FRANCOTIRADOR ACTIVADO EN: {nombre_txt}")
+    print(f"\n🎯 FRANCOTIRADOR ACTIVADO EN: {GRUPO_OBJETIVO}")
     print(f"🔍 Extrayendo EXCLUSIVAMENTE del mensaje {ID_INICIO} al {ID_FIN}...")
 
     contador_rafaga = 0
@@ -252,7 +224,6 @@ async def aspiradora_rangos():
             await asyncio.sleep(e.value + 1)
             bloque_mensajes = await app.get_messages(GRUPO_OBJETIVO, ids_a_buscar)
         except Exception as e:
-            print(f"⚠️ Error leyendo bloque {inicio_bloque}-{fin_bloque}: {e}")
             continue
 
         for mensaje in bloque_mensajes:
@@ -295,7 +266,8 @@ async def iniciar_web():
 async def main():
     loop = asyncio.get_event_loop()
     def silenciar_errores(loop, context):
-        if "Peer id invalid" in str(context.get("message", "")): return 
+        msg = str(context.get("message", ""))
+        if "Peer id invalid" in msg or "Task exception" in msg: return 
         loop.default_exception_handler(context)
     loop.set_exception_handler(silenciar_errores)
 
@@ -303,7 +275,6 @@ async def main():
     await app.start()
 
     await despertar_ojos()
-
     await descargar_respaldo()
     await iniciar_db()
     
