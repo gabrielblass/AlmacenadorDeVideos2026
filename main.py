@@ -19,7 +19,7 @@ from aiohttp import web
 logging.getLogger("pyrogram").setLevel(logging.ERROR)
 
 # ==========================================
-# 1. CONFIGURACIÓN INICIAL Y DATOS CLAVADOS
+# 1. CONFIGURACIÓN INICIAL (IDS CORREGIDOS)
 # ==========================================
 load_dotenv()
 
@@ -28,9 +28,9 @@ try:
     API_HASH = os.environ.get("API_HASH", "").strip()
     SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
     
-    # 🔥 LOS IDS FIJOS Y DUROS PARA NO FALLAR 🔥
-    TARGET_CHAT_ID = 5200605685 
-    BACKUP_CHAT_ID = -1003179132816 # Tu canal "Gran"
+    # 🔥 IDS EXACTOS CON SU -100 SACADOS DE TUS CAPTURAS 🔥
+    TARGET_CHAT_ID = -1005200605685  # Grupo "Videos Virales"
+    BACKUP_CHAT_ID = -1003179132816  # Canal "Gran" (Respaldo .db)
     
     if not API_ID or not API_HASH:
         raise ValueError("Faltan API_ID o API_HASH.")
@@ -59,14 +59,13 @@ else:
 albumes_procesados = set()
 
 # ==========================================
-# 2. ESCÁNER PROFUNDO (LA CURA A LA AMNESIA)
+# 2. ESCÁNER PROFUNDO (CURA A LA AMNESIA)
 # ==========================================
 async def despertar_ojos():
-    print("🧠 Escaneando tus chats para recuperar la memoria de los IDs (Tomará unos segundos)...")
+    print("🧠 Escaneando tus chats para registrar los IDs en la sesión...")
     
-    # Este bucle obliga a Pyrogram a guardar todos tus grupos en su memoria caché
     try:
-        async for dialog in app.get_dialogs(limit=200):
+        async for dialog in app.get_dialogs(limit=250):
             pass
     except Exception as e:
         print(f"⚠️ Aviso en el escáner: {e}")
@@ -75,7 +74,7 @@ async def despertar_ojos():
     
     try:
         await app.get_chat(TARGET_CHAT_ID)
-        print(f"👁️ Destino verificado: {TARGET_CHAT_ID}")
+        print(f"👁️ Destino verificado (Videos Virales): {TARGET_CHAT_ID}")
     except Exception as e: 
         print(f"⚠️ Falló el destino: {e}")
         
@@ -87,11 +86,11 @@ async def despertar_ojos():
 
     try:
         await app.get_chat(GRUPO_OBJETIVO)
-        print(f"👁️ Origen verificado: {GRUPO_OBJETIVO}")
+        print(f"👁️ Origen verificado ({GRUPO_OBJETIVO}).")
     except Exception as e: 
         print(f"⚠️ Falló el origen: {e}")
                 
-    print("👁️ Procediendo a extraer videos...")
+    print("👁️ Todo listo. Procediendo a extraer videos...")
 
 # ==========================================
 # 3. BASE DE DATOS Y RESPALDOS 
