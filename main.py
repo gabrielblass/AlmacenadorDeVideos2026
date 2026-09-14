@@ -15,7 +15,7 @@ from pyrogram.errors import FloodWait
 from dotenv import load_dotenv
 from aiohttp import web
 
-# Ocultar advertencias molestas
+# Ocultar advertencias molestas de Pyrogram
 logging.getLogger("pyrogram").setLevel(logging.ERROR)
 
 # ==========================================
@@ -28,18 +28,18 @@ try:
     API_HASH = os.environ.get("API_HASH", "").strip()
     SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
     
-    TARGET_CHAT_ID = -5200605685  # Grupo "Videos Virales"
-    BACKUP_CHAT_ID = -1003179132816  # Canal "Gran"
+    TARGET_CHAT_ID = -1005200605685  # Grupo "Videos Virales"
+    BACKUP_CHAT_ID = -1003179132816  # Canal "Gran" (Respaldo .db)
     
     if not API_ID or not API_HASH:
-        raise ValueError("Faltan API_ID o API_HASH.")
+        raise ValueError("Faltan API_ID o API_HASH en las variables de entorno.")
         
 except Exception as e:
     print(f"❌ [ERROR DE CONFIGURACIÓN]: {e}")
     sys.exit(1)
 
 # ==========================================
-# MODO RANGOS (FRANCOTIRADOR SECUENCIAL)
+# MODO RANGOS (ASCENDENTE ESTRICTO)
 # ==========================================
 GRUPO_OBJETIVO = "doeujj"
 ID_INICIO = 13420
@@ -65,7 +65,7 @@ async def despertar_ojos():
         async for dialog in app.get_dialogs(limit=300):
             pass
     except Exception as e:
-        print(f"⚠️ Aviso en el escáner: {e}")
+        print(f"⚠️ Aviso en el escáner de diálogos: {e}")
 
     print("✅ Memoria restaurada. Verificando objetivos...")
     
@@ -87,19 +87,19 @@ async def despertar_ojos():
     except Exception as e: 
         print(f"⚠️ Falló el origen: {e}")
                 
-    print("👁️ Todo listo. Procediendo a extraer videos...")
+    print("👁️ Todo listo. Procediendo a extraer contenido...")
 
 # ==========================================
-# 3. BASE DE DATOS Y RESPALDOS (REINICIO LIMPIO)
+# 3. BASE DE DATOS Y RESPALDOS
 # ==========================================
 async def iniciar_db():
     async with aiosqlite.connect(DB_NAME, timeout=15) as db:
-        # Limpiamos la tabla para forzar el envío limpio desde cero en este rango
+        # Blanqueamos para forzar el envío ordenado desde cero en este rango
         await db.execute("DROP TABLE IF EXISTS archivos_enviados")
         await db.execute('''CREATE TABLE archivos_enviados 
                             (huella TEXT PRIMARY KEY)''')
         await db.commit()
-    print("🧹 Base de datos blanqueada localmente. Iniciando barrido completo.")
+    print("🧹 Base de datos blanqueada localmente. Iniciando orden ascendente.")
 
 async def enviar_respaldo():
     try:
@@ -139,7 +139,7 @@ async def registrar_huella(huella):
         await db.commit()
 
 # ==========================================
-# 4. MOTOR DE ENVÍO
+# 4. MOTOR DE ENVÍO Y MANEJO DE ÁLBUMES
 # ==========================================
 async def procesar_y_enviar(mensaje):
     huella = generar_huella(mensaje)
@@ -168,7 +168,7 @@ async def procesar_y_enviar(mensaje):
             if media_limpia:
                 await app.send_media_group(TARGET_CHAT_ID, media=media_limpia)
                 for h in huellas_grupo: await registrar_huella(h)
-                print(f"📦 [ENVIADO] ÁLBUM copiado (ID real: {mensaje.id}).")
+                print(f"📦 [ENVIADO] ÁLBUM copiado (ID: {mensaje.id}).")
                 await asyncio.sleep(4) 
                 return len(media_limpia)
                 
@@ -181,7 +181,7 @@ async def procesar_y_enviar(mensaje):
                     msg_ids = [m.id for m in grupo_completo]
                     await app.forward_messages(TARGET_CHAT_ID, mensaje.chat.id, msg_ids)
                     for h in huellas_grupo: await registrar_huella(h)
-                    print(f"📦 [REENVIADO FORZOSO] ÁLBUM superó el bloqueo (ID real: {mensaje.id}).")
+                    print(f"📦 [REENVIADO FORZOSO] ÁLBUM superó el bloqueo (ID: {mensaje.id}).")
                     await asyncio.sleep(4)
                     return len(msg_ids)
                 except Exception as e2: pass
@@ -191,7 +191,7 @@ async def procesar_y_enviar(mensaje):
         try:
             await mensaje.copy(chat_id=TARGET_CHAT_ID, caption="")
             await registrar_huella(huella)
-            print(f"🚀 [ENVIADO] INDIVIDUAL copiado | ID real: {mensaje.id}")
+            print(f"🚀 [ENVIADO] INDIVIDUAL copiado | ID: {mensaje.id}")
             await asyncio.sleep(2) 
             return 1 
         except FloodWait as e:
@@ -202,32 +202,40 @@ async def procesar_y_enviar(mensaje):
                 try:
                     await app.forward_messages(TARGET_CHAT_ID, mensaje.chat.id, mensaje.id)
                     await registrar_huella(huella)
-                    print(f"🚀 [REENVIADO FORZOSO] INDIVIDUAL superó el bloqueo | ID real: {mensaje.id}")
+                    print(f"🚀 [REENVIADO FORZOSO] INDIVIDUAL superó el bloqueo | ID: {mensaje.id}")
                     await asyncio.sleep(2)
                     return 1
                 except Exception as e2: return 0
             return 0
 
 # ==========================================
-# 5. EL FRANCOTIRADOR SECUENCIAL (POR HISTORIAL)
+# 5. FRANCOTIRADOR ORDENADO (ASCENDENTE ESTRICTO)
 # ==========================================
 async def aspiradora_rangos():
-    print(f"\n🎯 FRANCOTIRADOR SECUENCIAL ACTIVADO EN: {GRUPO_OBJETIVO}")
-    print(f"🔍 Escaneando historial ordenado desde el mensaje {ID_FIN} hacia el {ID_INICIO}...")
+    print(f"\n🎯 FRANCOTIRADOR ASCENDENTE EN: {GRUPO_OBJETIVO}")
+    print(f"🔍 Solicitando bloques en orden cronológico estricto del {ID_INICIO} al {ID_FIN}...")
 
     contador_rafaga = 0
     
-    async for mensaje in app.get_chat_history(GRUPO_OBJETIVO):
-        if mensaje is None:
+    # Recorremos de manera estrictamente ascendente (del inicio al fin) en bloques de 100
+    for inicio_bloque in range(ID_INICIO, ID_FIN + 1, 100):
+        fin_bloque = min(ID_FIN, inicio_bloque + 99)
+        ids_a_buscar = list(range(inicio_bloque, fin_bloque + 1))
+        
+        try:
+            bloque_mensajes = await app.get_messages(GRUPO_OBJETIVO, ids_a_buscar)
+        except FloodWait as e:
+            print(f"🚨 Freno de lectura. Pausa de {e.value}s...")
+            await asyncio.sleep(e.value + 1)
+            bloque_mensajes = await app.get_messages(GRUPO_OBJETIVO, ids_a_buscar)
+        except Exception as e:
             continue
-            
-        # Si bajamos del límite inferior, detenemos la búsqueda
-        if mensaje.id < ID_INICIO:
-            print(f"🏁 Se alcanzó el límite inferior de ID ({ID_INICIO}). Barrido completado.")
-            break
-            
-        # Procesamos estrictamente dentro del rango de IDs reales
-        if ID_INICIO <= mensaje.id <= ID_FIN:
+
+        # Procesamos el bloque respetando el orden natural (ascendente)
+        for mensaje in bloque_mensajes:
+            if mensaje is None or mensaje.empty:
+                continue
+                
             if mensaje.photo or mensaje.video:
                 archivos_enviados = await procesar_y_enviar(mensaje)
                 
@@ -237,16 +245,16 @@ async def aspiradora_rangos():
                     if contador_rafaga >= 25:
                         print(f"⏸️ 25 archivos alcanzados. Guardando el .db por seguridad...")
                         await enviar_respaldo()
-                        await asyncio.sleep(60) 
+                        await asyncio.sleep(30) 
                         contador_rafaga = 0
-                        
-        await asyncio.sleep(0.1)
+        
+        await asyncio.sleep(0.5) 
     
     await enviar_respaldo()
-    print(f"🏁 Rango de {ID_INICIO} a {ID_FIN} completado al 100%. Misión cumplida.")
+    print(f"🏁 Rango de {ID_INICIO} a {ID_FIN} completado en orden perfecto al 100%.")
 
 # ==========================================
-# 6. MÓDULO WEB & ARRANQUE
+# 6. MÓDULO WEB & ARRANQUE PRINCIPAL
 # ==========================================
 async def handle(request): return web.Response(text="Francotirador vivo.")
 
@@ -273,7 +281,7 @@ async def main():
     await app.start()
 
     await despertar_ojos()
-    await iniciar_db()  # Inicia limpio sin arrastrar duplicados viejos
+    await iniciar_db()  # Inicia limpio y ordenado
     
     asyncio.create_task(aspiradora_rangos())
     
