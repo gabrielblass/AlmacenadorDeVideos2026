@@ -28,7 +28,7 @@ try:
     API_HASH = os.environ.get("API_HASH", "").strip()
     SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
     
-    TARGET_CHAT_ID = -1005200605685  # Grupo "Videos Virales"
+    TARGET_CHAT_ID = -5200605685  # Grupo "Videos Virales"
     BACKUP_CHAT_ID = -1003179132816  # Canal "Gran" (Respaldo .db)
     
     if not API_ID or not API_HASH:
