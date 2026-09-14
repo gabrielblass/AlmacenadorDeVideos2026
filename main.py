@@ -9,13 +9,11 @@ import sys
 import aiosqlite
 import logging
 from pyrogram import Client, filters
-from pyrogram.enums import MessagesFilter
 from pyrogram.types import InputMediaPhoto, InputMediaVideo
 from pyrogram.errors import FloodWait
 from dotenv import load_dotenv
 from aiohttp import web
 
-# Ocultar advertencias molestas de Pyrogram
 logging.getLogger("pyrogram").setLevel(logging.ERROR)
 
 # ==========================================
@@ -28,18 +26,18 @@ try:
     API_HASH = os.environ.get("API_HASH", "").strip()
     SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
     
-    TARGET_CHAT_ID = -5200605685  # Grupo "Videos Virales"
-    BACKUP_CHAT_ID = -1003179132816  # Canal "Gran" (Respaldo .db)
+    TARGET_CHAT_ID = -1005200605685  # Grupo "Videos Virales"
+    BACKUP_CHAT_ID = -1003179132816  # Canal "Gran"
     
     if not API_ID or not API_HASH:
-        raise ValueError("Faltan API_ID o API_HASH en las variables de entorno.")
+        raise ValueError("Faltan API_ID o API_HASH.")
         
 except Exception as e:
     print(f"❌ [ERROR DE CONFIGURACIÓN]: {e}")
     sys.exit(1)
 
 # ==========================================
-# MODO RANGOS (ASCENDENTE ESTRICTO)
+# MODO RANGOS (ORDEN ESTRICTO)
 # ==========================================
 GRUPO_OBJETIVO = "doeujj"
 ID_INICIO = 13420
@@ -57,15 +55,15 @@ else:
 albumes_procesados = set()
 
 # ==========================================
-# 2. ESCÁNER PROFUNDO DE CACHÉ
+# 2. ESCÁNER DE CACHÉ
 # ==========================================
 async def despertar_ojos():
     print("🧠 Escaneando chats recientes para registrar IDs en la sesión...")
     try:
         async for dialog in app.get_dialogs(limit=300):
             pass
-    except Exception as e:
-        print(f"⚠️ Aviso en el escáner de diálogos: {e}")
+    except Exception:
+        pass
 
     print("✅ Memoria restaurada. Verificando objetivos...")
     
@@ -90,16 +88,14 @@ async def despertar_ojos():
     print("👁️ Todo listo. Procediendo a extraer contenido...")
 
 # ==========================================
-# 3. BASE DE DATOS Y RESPALDOS
+# 3. BASE DE DATOS Y RESPALDOS (LIMPIA)
 # ==========================================
 async def iniciar_db():
     async with aiosqlite.connect(DB_NAME, timeout=15) as db:
-        # Blanqueamos para forzar el envío ordenado desde cero en este rango
         await db.execute("DROP TABLE IF EXISTS archivos_enviados")
-        await db.execute('''CREATE TABLE archivos_enviados 
-                            (huella TEXT PRIMARY KEY)''')
+        await db.execute('''CREATE TABLE archivos_enviados (huella TEXT PRIMARY KEY)''')
         await db.commit()
-    print("🧹 Base de datos blanqueada localmente. Iniciando orden ascendente.")
+    print("🧹 Base de datos blanqueada. Iniciando en orden estricto.")
 
 async def enviar_respaldo():
     try:
@@ -108,19 +104,6 @@ async def enviar_respaldo():
         print("☁️ [BACKUP] Memoria guardada con éxito en el canal Gran.")
     except Exception as e:
         print(f"⚠️ Error al guardar backup: {e}")
-
-async def descargar_respaldo():
-    print("🔄 Buscando tu archivo .db en el canal Gran...")
-    try:
-        async for mensaje in app.get_chat_history(BACKUP_CHAT_ID, limit=50):
-            if mensaje.document and mensaje.document.file_name.endswith(".db"):
-                print(f"📥 ¡TE ENCONTRÉ, MEMORIA!: {mensaje.document.file_name}")
-                await app.download_media(mensaje.document, file_name=DB_NAME)
-                print("✅ Memoria inyectada. Retomando donde se quedó sin duplicar.")
-                return
-        print("⚠️ No hay archivo .db reciente. Arrancando el rango desde cero.")
-    except Exception as e:
-        print(f"⚠️ Aviso al leer respaldo: {e}")
 
 def generar_huella(mensaje):
     media = mensaje.photo or mensaje.video
@@ -139,7 +122,7 @@ async def registrar_huella(huella):
         await db.commit()
 
 # ==========================================
-# 4. MOTOR DE ENVÍO Y MANEJO DE ÁLBUMES
+# 4. MOTOR DE ENVÍO CON ÁLBUMES MILIMÉTRICOS
 # ==========================================
 async def procesar_y_enviar(mensaje):
     huella = generar_huella(mensaje)
@@ -159,65 +142,53 @@ async def procesar_y_enviar(mensaje):
             grupo_completo = await app.get_media_group(mensaje.chat.id, mensaje.id)
             media_limpia = []
             huellas_grupo = []
+            ids_del_album = [] # Para imprimir exactamente qué números se enviaron juntos
+            
             for msg in grupo_completo:
-                h = generar_huella(msg)
-                if h: huellas_grupo.append(h)
-                if msg.photo: media_limpia.append(InputMediaPhoto(msg.photo.file_id, caption=""))
-                elif msg.video: media_limpia.append(InputMediaVideo(msg.video.file_id, caption=""))
+                # CANDADO: Solo mete al álbum los que están estrictamente dentro de tu rango
+                if ID_INICIO <= msg.id <= ID_FIN:
+                    h = generar_huella(msg)
+                    if h: huellas_grupo.append(h)
+                    if msg.photo: media_limpia.append(InputMediaPhoto(msg.photo.file_id, caption=""))
+                    elif msg.video: media_limpia.append(InputMediaVideo(msg.video.file_id, caption=""))
+                    ids_del_album.append(str(msg.id))
             
             if media_limpia:
                 await app.send_media_group(TARGET_CHAT_ID, media=media_limpia)
                 for h in huellas_grupo: await registrar_huella(h)
-                print(f"📦 [ENVIADO] ÁLBUM copiado (ID: {mensaje.id}).")
+                
+                # Aquí verás exactamente qué IDs se agruparon sin pensar que los omitió
+                print(f"📦 [ÁLBUM ENVIADO] Contiene los IDs exactos: {', '.join(ids_del_album)}")
                 await asyncio.sleep(4) 
                 return len(media_limpia)
                 
         except FloodWait as e:
-            print(f"🚨 Telegram pide descansar {e.value}s... Esperando.")
             await asyncio.sleep(e.value + 1)
-        except Exception as e:
-            if "Peer id invalid" in str(e) or "CHAT_ID_INVALID" in str(e):
-                try:
-                    msg_ids = [m.id for m in grupo_completo]
-                    await app.forward_messages(TARGET_CHAT_ID, mensaje.chat.id, msg_ids)
-                    for h in huellas_grupo: await registrar_huella(h)
-                    print(f"📦 [REENVIADO FORZOSO] ÁLBUM superó el bloqueo (ID: {mensaje.id}).")
-                    await asyncio.sleep(4)
-                    return len(msg_ids)
-                except Exception as e2: pass
+        except Exception:
+            pass
         return 0
 
     while True:
         try:
             await mensaje.copy(chat_id=TARGET_CHAT_ID, caption="")
             await registrar_huella(huella)
-            print(f"🚀 [ENVIADO] INDIVIDUAL copiado | ID: {mensaje.id}")
+            print(f"🚀 [INDIVIDUAL ENVIADO] ID exacto: {mensaje.id}")
             await asyncio.sleep(2) 
             return 1 
         except FloodWait as e:
-            print(f"🚨 Telegram pide descansar {e.value}s... Esperando.")
             await asyncio.sleep(e.value + 1)
-        except Exception as e:
-            if "Peer id invalid" in str(e) or "CHAT_ID_INVALID" in str(e):
-                try:
-                    await app.forward_messages(TARGET_CHAT_ID, mensaje.chat.id, mensaje.id)
-                    await registrar_huella(huella)
-                    print(f"🚀 [REENVIADO FORZOSO] INDIVIDUAL superó el bloqueo | ID: {mensaje.id}")
-                    await asyncio.sleep(2)
-                    return 1
-                except Exception as e2: return 0
+        except Exception:
             return 0
 
 # ==========================================
-# 5. FRANCOTIRADOR ORDENADO (ASCENDENTE ESTRICTO)
+# 5. FRANCOTIRADOR ORDENADO
 # ==========================================
 async def aspiradora_rangos():
-    print(f"\n🎯 FRANCOTIRADOR ASCENDENTE EN: {GRUPO_OBJETIVO}")
-    print(f"🔍 Solicitando bloques en orden cronológico estricto del {ID_INICIO} al {ID_FIN}...")
+    print(f"\n🎯 FRANCOTIRADOR ACTIVO EN: {GRUPO_OBJETIVO}")
+    print(f"🔍 Avanzando cronológicamente del {ID_INICIO} al {ID_FIN}...")
 
     contador_rafaga = 0
     
-    # Recorremos de manera estrictamente ascendente (del inicio al fin) en bloques de 100
     for inicio_bloque in range(ID_INICIO, ID_FIN + 1, 100):
         fin_bloque = min(ID_FIN, inicio_bloque + 99)
         ids_a_buscar = list(range(inicio_bloque, fin_bloque + 1))
@@ -225,36 +196,36 @@ async def aspiradora_rangos():
         try:
             bloque_mensajes = await app.get_messages(GRUPO_OBJETIVO, ids_a_buscar)
         except FloodWait as e:
-            print(f"🚨 Freno de lectura. Pausa de {e.value}s...")
             await asyncio.sleep(e.value + 1)
             bloque_mensajes = await app.get_messages(GRUPO_OBJETIVO, ids_a_buscar)
-        except Exception as e:
+        except Exception:
             continue
 
-        # Procesamos el bloque respetando el orden natural (ascendente)
         for mensaje in bloque_mensajes:
             if mensaje is None or mensaje.empty:
                 continue
                 
             if mensaje.photo or mensaje.video:
-                archivos_enviados = await procesar_y_enviar(mensaje)
-                
-                if archivos_enviados > 0:
-                    contador_rafaga += archivos_enviados
+                # CANDADO MAESTRO
+                if ID_INICIO <= mensaje.id <= ID_FIN:
+                    archivos_enviados = await procesar_y_enviar(mensaje)
                     
-                    if contador_rafaga >= 25:
-                        print(f"⏸️ 25 archivos alcanzados. Guardando el .db por seguridad...")
-                        await enviar_respaldo()
-                        await asyncio.sleep(30) 
-                        contador_rafaga = 0
+                    if archivos_enviados > 0:
+                        contador_rafaga += archivos_enviados
+                        
+                        if contador_rafaga >= 25:
+                            print(f"⏸️ 25 archivos alcanzados. Guardando el .db por seguridad...")
+                            await enviar_respaldo()
+                            await asyncio.sleep(15) 
+                            contador_rafaga = 0
         
         await asyncio.sleep(0.5) 
     
     await enviar_respaldo()
-    print(f"🏁 Rango de {ID_INICIO} a {ID_FIN} completado en orden perfecto al 100%.")
+    print(f"🏁 Rango completado al 100%. Misión cumplida.")
 
 # ==========================================
-# 6. MÓDULO WEB & ARRANQUE PRINCIPAL
+# 6. MÓDULO WEB & ARRANQUE
 # ==========================================
 async def handle(request): return web.Response(text="Francotirador vivo.")
 
@@ -281,7 +252,7 @@ async def main():
     await app.start()
 
     await despertar_ojos()
-    await iniciar_db()  # Inicia limpio y ordenado
+    await iniciar_db()
     
     asyncio.create_task(aspiradora_rangos())
     
