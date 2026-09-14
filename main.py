@@ -9,7 +9,7 @@ import sys
 import aiosqlite
 import logging
 from pyrogram import Client, filters
-from pyrogram.types import InputMediaPhoto, InputMediaVideo
+from pyrogram.types import InputMediaPhoto, InputMediaVideo, InputMediaDocument
 from pyrogram.errors import FloodWait
 from dotenv import load_dotenv
 from aiohttp import web
@@ -37,7 +37,7 @@ except Exception as e:
     sys.exit(1)
 
 # ==========================================
-# MODO RANGOS (ORDEN ESTRICTO)
+# MODO RANGOS (ESPEJO TOTAL)
 # ==========================================
 GRUPO_OBJETIVO = "doeujj"
 ID_INICIO = 13420
@@ -85,7 +85,7 @@ async def despertar_ojos():
     except Exception as e: 
         print(f"⚠️ Falló el origen: {e}")
                 
-    print("👁️ Todo listo. Procediendo a extraer contenido...")
+    print("👁️ Todo listo. Procediendo a extraer contenido exacto...")
 
 # ==========================================
 # 3. BASE DE DATOS Y RESPALDOS (LIMPIA)
@@ -95,7 +95,7 @@ async def iniciar_db():
         await db.execute("DROP TABLE IF EXISTS archivos_enviados")
         await db.execute('''CREATE TABLE archivos_enviados (huella TEXT PRIMARY KEY)''')
         await db.commit()
-    print("🧹 Base de datos blanqueada. Iniciando en orden estricto.")
+    print("🧹 Base de datos blanqueada. Iniciando espejo estricto sin saltos.")
 
 async def enviar_respaldo():
     try:
@@ -106,9 +106,13 @@ async def enviar_respaldo():
         print(f"⚠️ Error al guardar backup: {e}")
 
 def generar_huella(mensaje):
-    media = mensaje.photo or mensaje.video
-    if not media: return None
-    return getattr(media, "file_unique_id", None)
+    # Atrapa TODO para que la base de datos sepa qué copió, sea video o texto puro
+    if mensaje.photo: return getattr(mensaje.photo, "file_unique_id", None)
+    if mensaje.video: return getattr(mensaje.video, "file_unique_id", None)
+    if mensaje.animation: return getattr(mensaje.animation, "file_unique_id", None)
+    if mensaje.document: return getattr(mensaje.document, "file_unique_id", None)
+    # Si es un texto puro o promo sin archivo:
+    return f"msg_texto_{mensaje.id}"
 
 async def es_duplicado(huella):
     async with aiosqlite.connect(DB_NAME, timeout=15) as db:
@@ -122,7 +126,7 @@ async def registrar_huella(huella):
         await db.commit()
 
 # ==========================================
-# 4. MOTOR DE ENVÍO CON ÁLBUMES MILIMÉTRICOS
+# 4. MOTOR DE ENVÍO MODO ESPEJO
 # ==========================================
 async def procesar_y_enviar(mensaje):
     huella = generar_huella(mensaje)
@@ -133,6 +137,7 @@ async def procesar_y_enviar(mensaje):
             albumes_procesados.add(mensaje.media_group_id) 
         return 0
 
+    # Lógica para grupos/álbumes: Mantiene textos originales
     if getattr(mensaje, "media_group_id", None):
         if mensaje.media_group_id in albumes_procesados:
             return 0
@@ -142,23 +147,32 @@ async def procesar_y_enviar(mensaje):
             grupo_completo = await app.get_media_group(mensaje.chat.id, mensaje.id)
             media_limpia = []
             huellas_grupo = []
-            ids_del_album = [] # Para imprimir exactamente qué números se enviaron juntos
+            ids_del_album = [] 
             
             for msg in grupo_completo:
-                # CANDADO: Solo mete al álbum los que están estrictamente dentro de tu rango
                 if ID_INICIO <= msg.id <= ID_FIN:
                     h = generar_huella(msg)
                     if h: huellas_grupo.append(h)
-                    if msg.photo: media_limpia.append(InputMediaPhoto(msg.photo.file_id, caption=""))
-                    elif msg.video: media_limpia.append(InputMediaVideo(msg.video.file_id, caption=""))
+                    
+                    # Se copia TAL CUAL, con su caption (texto) original
+                    txt_original = msg.caption or ""
+                    
+                    if msg.photo: 
+                        media_limpia.append(InputMediaPhoto(msg.photo.file_id, caption=txt_original))
+                    elif msg.video: 
+                        media_limpia.append(InputMediaVideo(msg.video.file_id, caption=txt_original))
+                    elif msg.animation: 
+                        media_limpia.append(InputMediaVideo(msg.animation.file_id, caption=txt_original))
+                    elif msg.document: 
+                        media_limpia.append(InputMediaDocument(msg.document.file_id, caption=txt_original))
+                        
                     ids_del_album.append(str(msg.id))
             
             if media_limpia:
                 await app.send_media_group(TARGET_CHAT_ID, media=media_limpia)
                 for h in huellas_grupo: await registrar_huella(h)
                 
-                # Aquí verás exactamente qué IDs se agruparon sin pensar que los omitió
-                print(f"📦 [ÁLBUM ENVIADO] Contiene los IDs exactos: {', '.join(ids_del_album)}")
+                print(f"📦 [ÁLBUM ESPEJO] IDs agrupados: {', '.join(ids_del_album)}")
                 await asyncio.sleep(4) 
                 return len(media_limpia)
                 
@@ -168,24 +182,33 @@ async def procesar_y_enviar(mensaje):
             pass
         return 0
 
+    # Lógica para individuales o promos puras: Mantiene todo tal cual
     while True:
         try:
-            await mensaje.copy(chat_id=TARGET_CHAT_ID, caption="")
+            await mensaje.copy(chat_id=TARGET_CHAT_ID) # Ya no le borra el caption a nada
             await registrar_huella(huella)
-            print(f"🚀 [INDIVIDUAL ENVIADO] ID exacto: {mensaje.id}")
-            await asyncio.sleep(2) 
+            print(f"🚀 [ESPEJO EXACTO] ID real: {mensaje.id}")
+            await asyncio.sleep(2.5) 
             return 1 
         except FloodWait as e:
             await asyncio.sleep(e.value + 1)
-        except Exception:
+        except Exception as e:
+            if "Peer id invalid" in str(e) or "CHAT_ID_INVALID" in str(e):
+                try:
+                    await app.forward_messages(TARGET_CHAT_ID, mensaje.chat.id, mensaje.id)
+                    await registrar_huella(huella)
+                    print(f"🚀 [REENVIADO] ID real: {mensaje.id}")
+                    await asyncio.sleep(2.5)
+                    return 1
+                except Exception: return 0
             return 0
 
 # ==========================================
-# 5. FRANCOTIRADOR ORDENADO
+# 5. BARRIDO CRONOLÓGICO TOTAL
 # ==========================================
 async def aspiradora_rangos():
-    print(f"\n🎯 FRANCOTIRADOR ACTIVO EN: {GRUPO_OBJETIVO}")
-    print(f"🔍 Avanzando cronológicamente del {ID_INICIO} al {ID_FIN}...")
+    print(f"\n🎯 MODO ESPEJO ACTIVO EN: {GRUPO_OBJETIVO}")
+    print(f"🔍 Copiando absolutamente todo del {ID_INICIO} al {ID_FIN}...")
 
     contador_rafaga = 0
     
@@ -205,19 +228,18 @@ async def aspiradora_rangos():
             if mensaje is None or mensaje.empty:
                 continue
                 
-            if mensaje.photo or mensaje.video:
-                # CANDADO MAESTRO
-                if ID_INICIO <= mensaje.id <= ID_FIN:
-                    archivos_enviados = await procesar_y_enviar(mensaje)
+            # 🔥 YA NO FILTRA MULTIMEDIA. ENVÍA CUALQUIER MENSAJE QUE EXISTA EN ESE RANGO 🔥
+            if ID_INICIO <= mensaje.id <= ID_FIN:
+                archivos_enviados = await procesar_y_enviar(mensaje)
+                
+                if archivos_enviados > 0:
+                    contador_rafaga += archivos_enviados
                     
-                    if archivos_enviados > 0:
-                        contador_rafaga += archivos_enviados
-                        
-                        if contador_rafaga >= 25:
-                            print(f"⏸️ 25 archivos alcanzados. Guardando el .db por seguridad...")
-                            await enviar_respaldo()
-                            await asyncio.sleep(15) 
-                            contador_rafaga = 0
+                    if contador_rafaga >= 25:
+                        print(f"⏸️ 25 mensajes alcanzados. Guardando el .db por seguridad...")
+                        await enviar_respaldo()
+                        await asyncio.sleep(15) 
+                        contador_rafaga = 0
         
         await asyncio.sleep(0.5) 
     
