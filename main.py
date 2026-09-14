@@ -9,6 +9,7 @@ import sys
 import aiosqlite
 import logging
 from pyrogram import Client, filters
+from pyrogram.enums import MessagesFilter
 from pyrogram.types import InputMediaPhoto, InputMediaVideo
 from pyrogram.errors import FloodWait
 from dotenv import load_dotenv
@@ -89,16 +90,16 @@ async def despertar_ojos():
     print("👁️ Todo listo. Procediendo a extraer videos...")
 
 # ==========================================
-# 3. BASE DE DATOS LIMPIA (REINICIO TOTAL)
+# 3. BASE DE DATOS Y RESPALDOS (REINICIO LIMPIO)
 # ==========================================
 async def iniciar_db():
     async with aiosqlite.connect(DB_NAME, timeout=15) as db:
-        # Borramos la tabla vieja para que empiece completamente desde cero y no salte nada por duplicado
+        # Limpiamos la tabla para forzar el envío limpio desde cero en este rango
         await db.execute("DROP TABLE IF EXISTS archivos_enviados")
         await db.execute('''CREATE TABLE archivos_enviados 
                             (huella TEXT PRIMARY KEY)''')
         await db.commit()
-    print("🧹 Base de datos blanqueada. Iniciando sin registros previos.")
+    print("🧹 Base de datos blanqueada localmente. Iniciando barrido completo.")
 
 async def enviar_respaldo():
     try:
@@ -107,6 +108,19 @@ async def enviar_respaldo():
         print("☁️ [BACKUP] Memoria guardada con éxito en el canal Gran.")
     except Exception as e:
         print(f"⚠️ Error al guardar backup: {e}")
+
+async def descargar_respaldo():
+    print("🔄 Buscando tu archivo .db en el canal Gran...")
+    try:
+        async for mensaje in app.get_chat_history(BACKUP_CHAT_ID, limit=50):
+            if mensaje.document and mensaje.document.file_name.endswith(".db"):
+                print(f"📥 ¡TE ENCONTRÉ, MEMORIA!: {mensaje.document.file_name}")
+                await app.download_media(mensaje.document, file_name=DB_NAME)
+                print("✅ Memoria inyectada. Retomando donde se quedó sin duplicar.")
+                return
+        print("⚠️ No hay archivo .db reciente. Arrancando el rango desde cero.")
+    except Exception as e:
+        print(f"⚠️ Aviso al leer respaldo: {e}")
 
 def generar_huella(mensaje):
     media = mensaje.photo or mensaje.video
@@ -226,7 +240,7 @@ async def aspiradora_rangos():
                         await asyncio.sleep(60) 
                         contador_rafaga = 0
                         
-        await asyncio.sleep(0.1) # Pequeña pausa para no saturar la API
+        await asyncio.sleep(0.1)
     
     await enviar_respaldo()
     print(f"🏁 Rango de {ID_INICIO} a {ID_FIN} completado al 100%. Misión cumplida.")
@@ -259,7 +273,7 @@ async def main():
     await app.start()
 
     await despertar_ojos()
-    await iniciar_db()  # Borra la base vieja y empieza completamente limpio
+    await iniciar_db()  # Inicia limpio sin arrastrar duplicados viejos
     
     asyncio.create_task(aspiradora_rangos())
     
